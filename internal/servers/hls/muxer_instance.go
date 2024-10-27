@@ -3,6 +3,8 @@ package hls
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +19,18 @@ import (
 	"github.com/bluenviron/mediamtx/internal/stream"
 	"github.com/fsnotify/fsnotify"
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	maxRetryAttempts    = 3
+	retryBaseDelay      = 100 * time.Millisecond
+	watcherEventBuffer  = 100
+	playlistUpdateLimit = time.Second / 2 // Limit updates to max 2 per second
+)
+
+var (
+	ErrPlaylistUpdate = errors.New("playlist update failed")
+	ErrWatcherSetup   = errors.New("file watcher setup failed")
 )
 
 type playlistResponse struct {
@@ -57,12 +71,12 @@ type muxerInstance struct {
 	handleMutex         sync.Mutex
 	errChan             chan error
 
-	watcher   *fsnotify.Watcher
-	watchDone chan bool
-	wg        sync.WaitGroup
+	watcher        *fsnotify.Watcher
+	watchDone      chan struct{}
+	wg             sync.WaitGroup
+	lastUpdateTime time.Time
 }
 
-// Log implements logger.Writer
 func (mi *muxerInstance) Log(level logger.Level, format string, args ...interface{}) {
 	mi.parent.Log(level, format, args...)
 }
@@ -73,59 +87,27 @@ func (mi *muxerInstance) errorChan() chan error {
 
 func (mi *muxerInstance) initialize() error {
 	mi.ctx, mi.ctxCancel = context.WithCancel(context.Background())
-	mi.errChan = make(chan error, 1)
-	mi.watchDone = make(chan bool)
+	mi.errChan = make(chan error, 10) // Buffer increased to handle more errors
+	mi.watchDone = make(chan struct{})
+	mi.lastUpdateTime = time.Now()
 
 	var muxerDirectory string
 	if mi.directory != "" {
 		muxerDirectory = filepath.Join(mi.directory, mi.pathName)
-		err := os.MkdirAll(muxerDirectory, 0o755)
-		if err != nil {
+		if err := mi.setupDirectory(muxerDirectory); err != nil {
 			return err
 		}
 		mi.primaryPlaylistPath = filepath.Join(muxerDirectory, "index.m3u8")
 		mi.streamPlaylistPath = filepath.Join(muxerDirectory, "main_stream.m3u8")
 	}
 
-	mi.hmuxer = &gohlslib.Muxer{
-		Variant:            gohlslib.MuxerVariant(mi.variant),
-		SegmentCount:       mi.segmentCount,
-		SegmentMinDuration: time.Duration(mi.segmentDuration),
-		PartMinDuration:    time.Duration(mi.partDuration),
-		SegmentMaxSize:     uint64(mi.segmentMaxSize),
-		Directory:          muxerDirectory,
-		OnEncodeError: func(err error) {
-			mi.Log(logger.Warn, err.Error())
-		},
-	}
-
-	err := hls.FromStream(mi.stream, mi, mi.hmuxer)
-	if err != nil {
+	if err := mi.setupMuxer(muxerDirectory); err != nil {
 		return err
 	}
 
-	err = mi.hmuxer.Start()
-	if err != nil {
-		mi.stream.RemoveReader(mi)
-		return err
-	}
-
-	mi.Log(logger.Info, "is converting into HLS, %s",
-		defs.FormatsInfo(mi.stream.ReaderFormats(mi)))
-
-	mi.stream.StartReader(mi)
-
-	// Initialize fsnotify watcher
 	if mi.directory != "" {
-		watcher, err := fsnotify.NewWatcher()
-		if err != nil {
-			return err
-		}
-		mi.watcher = watcher
-
-		err = mi.watcher.Add(muxerDirectory)
-		if err != nil {
-			return err
+		if err := mi.setupWatcher(muxerDirectory); err != nil {
+			return fmt.Errorf("%w: %v", ErrWatcherSetup, err)
 		}
 
 		// Start watching in a separate goroutine
@@ -136,8 +118,71 @@ func (mi *muxerInstance) initialize() error {
 	return nil
 }
 
+func (mi *muxerInstance) setupDirectory(dir string) error {
+	// Ensure directory exists
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Cleanup any temporary files from previous crashes
+	pattern := filepath.Join(dir, "*.tmp")
+	tmpFiles, err := filepath.Glob(pattern)
+	if err == nil {
+		for _, f := range tmpFiles {
+			os.Remove(f)
+		}
+	}
+
+	return nil
+}
+
+func (mi *muxerInstance) setupMuxer(dir string) error {
+	mi.hmuxer = &gohlslib.Muxer{
+		Variant:            gohlslib.MuxerVariant(mi.variant),
+		SegmentCount:       mi.segmentCount,
+		SegmentMinDuration: time.Duration(mi.segmentDuration),
+		PartMinDuration:    time.Duration(mi.partDuration),
+		SegmentMaxSize:     uint64(mi.segmentMaxSize),
+		Directory:          dir,
+		OnEncodeError: func(err error) {
+			mi.Log(logger.Warn, err.Error())
+		},
+	}
+
+	if err := hls.FromStream(mi.stream, mi, mi.hmuxer); err != nil {
+		return fmt.Errorf("failed to setup stream: %w", err)
+	}
+
+	if err := mi.hmuxer.Start(); err != nil {
+		mi.stream.RemoveReader(mi)
+		return fmt.Errorf("failed to start muxer: %w", err)
+	}
+
+	mi.Log(logger.Info, "is converting into HLS, %s",
+		defs.FormatsInfo(mi.stream.ReaderFormats(mi)))
+
+	mi.stream.StartReader(mi)
+	return nil
+}
+
+func (mi *muxerInstance) setupWatcher(dir string) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	mi.watcher = watcher
+
+	if err := mi.watcher.Add(dir); err != nil {
+		mi.watcher.Close()
+		return err
+	}
+
+	return nil
+}
+
 func (mi *muxerInstance) watchSegments() {
 	defer mi.wg.Done()
+	defer close(mi.watchDone)
 
 	for {
 		select {
@@ -146,9 +191,17 @@ func (mi *muxerInstance) watchSegments() {
 				return
 			}
 
-			// Filter for new segment files (e.g., *.ts)
+			// Only process .ts file creation events
 			if event.Op&fsnotify.Create == fsnotify.Create && filepath.Ext(event.Name) == ".ts" {
-				mi.updatePlaylists()
+				// Rate limit updates
+				if time.Since(mi.lastUpdateTime) < playlistUpdateLimit {
+					continue
+				}
+
+				if err := mi.updatePlaylistsWithRetry(); err != nil {
+					mi.Log(logger.Warn, "failed to update playlists after retries: %v", err)
+				}
+				mi.lastUpdateTime = time.Now()
 			}
 
 		case err, ok := <-mi.watcher.Errors:
@@ -156,6 +209,10 @@ func (mi *muxerInstance) watchSegments() {
 				return
 			}
 			mi.Log(logger.Warn, "file watcher error: %v", err)
+			// Try to recreate watcher on critical errors
+			if err := mi.recreateWatcher(); err != nil {
+				mi.Log(logger.Error, "failed to recreate watcher: %v", err)
+			}
 
 		case <-mi.ctx.Done():
 			return
@@ -163,15 +220,29 @@ func (mi *muxerInstance) watchSegments() {
 	}
 }
 
-func (mi *muxerInstance) writePlaylistFile(path string, content []byte) error {
-	// Write to temporary file
-	tempPath := path + ".tmp"
-	err := os.WriteFile(tempPath, content, 0644)
-	if err != nil {
-		return err
+func (mi *muxerInstance) recreateWatcher() error {
+	if mi.watcher != nil {
+		mi.watcher.Close()
 	}
 
-	return os.Rename(tempPath, path)
+	return mi.setupWatcher(mi.hmuxer.Directory)
+}
+
+func (mi *muxerInstance) writePlaylistFile(path string, content []byte) error {
+	tempPath := path + ".tmp"
+
+	// Write to temporary file
+	if err := os.WriteFile(tempPath, content, 0o644); err != nil {
+		return fmt.Errorf("failed to write temporary file: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tempPath, path); err != nil {
+		os.Remove(tempPath) // Clean up on error
+		return fmt.Errorf("failed to rename temporary file: %w", err)
+	}
+
+	return nil
 }
 
 func (mi *muxerInstance) getPlaylist(request string) ([]byte, error) {
@@ -181,38 +252,57 @@ func (mi *muxerInstance) getPlaylist(request string) ([]byte, error) {
 
 	req, err := http.NewRequest(http.MethodGet, request, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	mi.hmuxer.Handle(resp, req)
 	return resp.body.Bytes(), nil
 }
 
-func (mi *muxerInstance) updatePlaylists() {
+func (mi *muxerInstance) updatePlaylistsWithRetry() error {
+	var lastErr error
+	for attempt := 0; attempt < maxRetryAttempts; attempt++ {
+		if err := mi.updatePlaylists(); err != nil {
+			lastErr = err
+			// Exponential backoff
+			delay := retryBaseDelay * time.Duration(1<<attempt)
+			select {
+			case <-time.After(delay):
+				continue
+			case <-mi.ctx.Done():
+				return fmt.Errorf("context cancelled during retry: %w", lastErr)
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("%w: %v", ErrPlaylistUpdate, lastErr)
+}
+
+func (mi *muxerInstance) updatePlaylists() error {
 	mi.playlistMutex.Lock()
 	defer mi.playlistMutex.Unlock()
 
 	// Update primary playlist
 	primaryContent, err := mi.getPlaylist("/index.m3u8")
-	if err == nil {
-		err = mi.writePlaylistFile(mi.primaryPlaylistPath, primaryContent)
-		if err != nil {
-			mi.Log(logger.Warn, "error writing primary playlist: %v", err)
-		}
-	} else {
-		mi.Log(logger.Warn, "error fetching primary playlist: %v", err)
+	if err != nil {
+		return fmt.Errorf("failed to get primary playlist: %w", err)
+	}
+
+	if err := mi.writePlaylistFile(mi.primaryPlaylistPath, primaryContent); err != nil {
+		return fmt.Errorf("failed to write primary playlist: %w", err)
 	}
 
 	// Update stream playlist
 	streamContent, err := mi.getPlaylist("/main_stream.m3u8")
-	if err == nil {
-		err = mi.writePlaylistFile(mi.streamPlaylistPath, streamContent)
-		if err != nil {
-			mi.Log(logger.Warn, "error writing stream playlist: %v", err)
-		}
-	} else {
-		mi.Log(logger.Warn, "error fetching stream playlist: %v", err)
+	if err != nil {
+		return fmt.Errorf("failed to get stream playlist: %w", err)
 	}
+
+	if err := mi.writePlaylistFile(mi.streamPlaylistPath, streamContent); err != nil {
+		return fmt.Errorf("failed to write stream playlist: %w", err)
+	}
+
+	return nil
 }
 
 func (mi *muxerInstance) close() {
@@ -220,7 +310,11 @@ func (mi *muxerInstance) close() {
 		mi.ctxCancel()
 	}
 
-	// Close the fsnotify watcher
+	// Wait for watch goroutine to finish
+	if mi.watchDone != nil {
+		<-mi.watchDone
+	}
+
 	if mi.watcher != nil {
 		mi.watcher.Close()
 	}
@@ -230,13 +324,19 @@ func (mi *muxerInstance) close() {
 	mi.stream.RemoveReader(mi)
 	mi.hmuxer.Close()
 
+	// Cleanup files
 	if mi.hmuxer.Directory != "" {
-		if mi.primaryPlaylistPath != "" {
-			os.Remove(mi.primaryPlaylistPath)
+		os.Remove(mi.primaryPlaylistPath)
+		os.Remove(mi.streamPlaylistPath)
+
+		// Cleanup any remaining temporary files
+		pattern := filepath.Join(mi.hmuxer.Directory, "*.tmp")
+		if tmpFiles, err := filepath.Glob(pattern); err == nil {
+			for _, f := range tmpFiles {
+				os.Remove(f)
+			}
 		}
-		if mi.streamPlaylistPath != "" {
-			os.Remove(mi.streamPlaylistPath)
-		}
+
 		os.Remove(mi.hmuxer.Directory)
 	}
 

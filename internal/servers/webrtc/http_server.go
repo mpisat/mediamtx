@@ -26,8 +26,14 @@ import (
 //go:embed publish_index.html
 var publishIndex []byte
 
+//go:embed publisher.js
+var publisherJS []byte
+
 //go:embed read_index.html
 var readIndex []byte
+
+//go:embed reader.js
+var readerJS []byte
 
 var (
 	reWHIPWHEPNoID   = regexp.MustCompile("^/(.+?)/(whip|whep)$")
@@ -48,14 +54,21 @@ func writeError(ctx *gin.Context, statusCode int, err error) {
 	})
 }
 
-func sessionLocation(publish bool, path string, secret uuid.UUID) string {
+func sessionLocation(publish bool, path string, rawQuery string, secret uuid.UUID) string {
 	ret := "/" + path + "/"
+
 	if publish {
 		ret += "whip"
 	} else {
 		ret += "whep"
 	}
+
 	ret += "/" + secret.String()
+
+	if rawQuery != "" {
+		ret += "?" + rawQuery
+	}
+
 	return ret
 }
 
@@ -66,7 +79,7 @@ type httpServer struct {
 	serverCert     string
 	allowOrigin    string
 	trustedProxies conf.IPNetworks
-	readTimeout    conf.StringDuration
+	readTimeout    conf.Duration
 	pathManager    serverPathManager
 	parent         *Server
 
@@ -111,17 +124,19 @@ func (s *httpServer) close() {
 }
 
 func (s *httpServer) checkAuthOutsideSession(ctx *gin.Context, pathName string, publish bool) bool {
+	req := defs.PathAccessRequest{
+		Name:    pathName,
+		Publish: publish,
+		IP:      net.ParseIP(ctx.ClientIP()),
+		Proto:   auth.ProtocolWebRTC,
+	}
+	req.FillFromHTTPRequest(ctx.Request)
+
 	_, err := s.pathManager.FindPathConf(defs.PathFindPathConfReq{
-		AccessRequest: defs.PathAccessRequest{
-			Name:        pathName,
-			Publish:     publish,
-			IP:          net.ParseIP(ctx.ClientIP()),
-			Proto:       auth.ProtocolWebRTC,
-			HTTPRequest: ctx.Request,
-		},
+		AccessRequest: req,
 	})
 	if err != nil {
-		var terr *auth.Error
+		var terr auth.Error
 		if errors.As(err, &terr) {
 			if terr.AskCredentials {
 				ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)
@@ -183,7 +198,7 @@ func (s *httpServer) onWHIPPost(ctx *gin.Context, pathName string, publish bool)
 		httpRequest: ctx.Request,
 	})
 	if res.err != nil {
-		var terr *auth.Error
+		var terr auth.Error
 		if errors.As(err, &terr) {
 			if terr.AskCredentials {
 				ctx.Header("WWW-Authenticate", `Basic realm="mediamtx"`)
@@ -216,7 +231,7 @@ func (s *httpServer) onWHIPPost(ctx *gin.Context, pathName string, publish bool)
 	ctx.Header("ID", res.sx.uuid.String())
 	ctx.Header("Accept-Patch", "application/trickle-ice-sdpfrag")
 	ctx.Writer.Header()["Link"] = whip.LinkHeaderMarshal(servers)
-	ctx.Header("Location", sessionLocation(publish, pathName, res.sx.secret))
+	ctx.Header("Location", sessionLocation(publish, pathName, ctx.Request.URL.RawQuery, res.sx.secret))
 	ctx.Writer.WriteHeader(http.StatusCreated)
 	ctx.Writer.Write(res.answer)
 }
@@ -316,6 +331,22 @@ func (s *httpServer) middlewareOrigin(ctx *gin.Context) {
 }
 
 func (s *httpServer) onRequest(ctx *gin.Context) {
+	if strings.HasSuffix(ctx.Request.URL.Path, "/publisher.js") {
+		ctx.Header("Cache-Control", "max-age=3600")
+		ctx.Header("Content-Type", "application/javascript")
+		ctx.Writer.WriteHeader(http.StatusOK)
+		ctx.Writer.Write(publisherJS)
+		return
+	}
+
+	if strings.HasSuffix(ctx.Request.URL.Path, "/reader.js") {
+		ctx.Header("Cache-Control", "max-age=3600")
+		ctx.Header("Content-Type", "application/javascript")
+		ctx.Writer.WriteHeader(http.StatusOK)
+		ctx.Writer.Write(readerJS)
+		return
+	}
+
 	// WHIP/WHEP, outside session
 	if m := reWHIPWHEPNoID.FindStringSubmatch(ctx.Request.URL.Path); m != nil {
 		switch ctx.Request.Method {

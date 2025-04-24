@@ -11,7 +11,7 @@ import (
 	"github.com/bluenviron/gortsplib/v4/pkg/rtptime"
 	"github.com/bluenviron/mediamtx/internal/stream"
 	"github.com/pion/rtp"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 var errNoSupportedCodecsTo = errors.New(
@@ -24,7 +24,8 @@ func ToStream(
 	stream **stream.Stream,
 ) ([]*description.Media, error) {
 	var medias []*description.Media //nolint:prealloc
-	timeDecoder := rtptime.NewGlobalDecoder2()
+	timeDecoder := &rtptime.GlobalDecoder2{}
+	timeDecoder.Initialize()
 
 	for _, track := range pc.incomingTracks {
 		var typ description.MediaType
@@ -141,13 +142,13 @@ func ToStream(
 			Formats: []format.Format{forma},
 		}
 
-		track.OnPacketRTP = func(pkt *rtp.Packet) {
+		track.OnPacketRTP = func(pkt *rtp.Packet, ntp time.Time) {
 			pts, ok := timeDecoder.Decode(track, pkt)
 			if !ok {
 				return
 			}
 
-			(*stream).WriteRTPPacket(medi, forma, pkt, time.Now(), pts)
+			(*stream).WriteRTPPacket(medi, forma, pkt, ntp, pts)
 		}
 
 		medias = append(medias, medi)

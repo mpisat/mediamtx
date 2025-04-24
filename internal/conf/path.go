@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/bluenviron/gortsplib/v4/pkg/base"
+	"github.com/bluenviron/mediamtx/internal/logger"
 )
 
 var rePathName = regexp.MustCompile(`^[0-9a-zA-Z_\-/\.~]+$`)
 
-func isValidPathName(name string) error {
+// IsValidPathName checks whether the path name is valid.
+func IsValidPathName(name string) error {
 	if name == "" {
 		return fmt.Errorf("cannot be empty")
 	}
@@ -35,7 +37,7 @@ func isValidPathName(name string) error {
 	return nil
 }
 
-func srtCheckPassphrase(passphrase string) error {
+func checkSRTPassphrase(passphrase string) error {
 	switch {
 	case len(passphrase) < 10 || len(passphrase) > 79:
 		return fmt.Errorf("must be between 10 and 79 characters")
@@ -45,13 +47,24 @@ func srtCheckPassphrase(passphrase string) error {
 	}
 }
 
-// FindPathConf returns the configuration corresponding to the given path name.
-func FindPathConf(pathConfs map[string]*Path, name string) (*Path, []string, error) {
-	err := isValidPathName(name)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid path name: %w (%s)", err, name)
+func checkRedirect(v string) error {
+	if strings.HasPrefix(v, "/") {
+		err := IsValidPathName(v[1:])
+		if err != nil {
+			return fmt.Errorf("'%s': %w", v, err)
+		}
+	} else {
+		_, err := base.ParseURL(v)
+		if err != nil {
+			return fmt.Errorf("'%s' is not a valid RTSP URL", v)
+		}
 	}
 
+	return nil
+}
+
+// FindPathConf returns the configuration corresponding to the given path name.
+func FindPathConf(pathConfs map[string]*Path, name string) (*Path, []string, error) {
 	// normal path
 	if pathConf, ok := pathConfs[name]; ok {
 		return pathConf, nil, nil
@@ -60,6 +73,11 @@ func FindPathConf(pathConfs map[string]*Path, name string) (*Path, []string, err
 	// regular expression-based path
 	for pathConfName, pathConf := range pathConfs {
 		if pathConf.Regexp != nil && pathConfName != "all" && pathConfName != "all_others" {
+			err := IsValidPathName(name)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid path name: %w (%s)", err, name)
+			}
+
 			m := pathConf.Regexp.FindStringSubmatch(name)
 			if m != nil {
 				return pathConf, m, nil
@@ -70,6 +88,11 @@ func FindPathConf(pathConfs map[string]*Path, name string) (*Path, []string, err
 	// process all_others after every other entry
 	for pathConfName, pathConf := range pathConfs {
 		if pathConfName == "all" || pathConfName == "all_others" {
+			err := IsValidPathName(name)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid path name: %w (%s)", err, name)
+			}
+
 			m := pathConf.Regexp.FindStringSubmatch(name)
 			if m != nil {
 				return pathConf, m, nil
@@ -87,23 +110,24 @@ type Path struct {
 	Name   string         `json:"name"` // filled by Check()
 
 	// General
-	Source                     string         `json:"source"`
-	SourceFingerprint          string         `json:"sourceFingerprint"`
-	SourceOnDemand             bool           `json:"sourceOnDemand"`
-	SourceOnDemandStartTimeout StringDuration `json:"sourceOnDemandStartTimeout"`
-	SourceOnDemandCloseAfter   StringDuration `json:"sourceOnDemandCloseAfter"`
-	MaxReaders                 int            `json:"maxReaders"`
-	SRTReadPassphrase          string         `json:"srtReadPassphrase"`
-	Fallback                   string         `json:"fallback"`
+	Source                     string   `json:"source"`
+	SourceFingerprint          string   `json:"sourceFingerprint"`
+	SourceOnDemand             bool     `json:"sourceOnDemand"`
+	SourceOnDemandStartTimeout Duration `json:"sourceOnDemandStartTimeout"`
+	SourceOnDemandCloseAfter   Duration `json:"sourceOnDemandCloseAfter"`
+	MaxReaders                 int      `json:"maxReaders"`
+	SRTReadPassphrase          string   `json:"srtReadPassphrase"`
+	Fallback                   string   `json:"fallback"`
+	UseAbsoluteTimestamp       bool     `json:"useAbsoluteTimestamp"`
 
 	// Record
-	Record                bool           `json:"record"`
-	Playback              *bool          `json:"playback,omitempty"` // deprecated
-	RecordPath            string         `json:"recordPath"`
-	RecordFormat          RecordFormat   `json:"recordFormat"`
-	RecordPartDuration    StringDuration `json:"recordPartDuration"`
-	RecordSegmentDuration StringDuration `json:"recordSegmentDuration"`
-	RecordDeleteAfter     StringDuration `json:"recordDeleteAfter"`
+	Record                bool         `json:"record"`
+	Playback              *bool        `json:"playback,omitempty"` // deprecated
+	RecordPath            string       `json:"recordPath"`
+	RecordFormat          RecordFormat `json:"recordFormat"`
+	RecordPartDuration    Duration     `json:"recordPartDuration"`
+	RecordSegmentDuration Duration     `json:"recordSegmentDuration"`
+	RecordDeleteAfter     Duration     `json:"recordDeleteAfter"`
 
 	// Authentication (deprecated)
 	PublishUser *Credential `json:"publishUser,omitempty"` // deprecated
@@ -130,72 +154,79 @@ type Path struct {
 	SourceRedirect string `json:"sourceRedirect"`
 
 	// Raspberry Pi Camera source
-	RPICameraCamID             uint      `json:"rpiCameraCamID"`
-	RPICameraWidth             uint      `json:"rpiCameraWidth"`
-	RPICameraHeight            uint      `json:"rpiCameraHeight"`
-	RPICameraHFlip             bool      `json:"rpiCameraHFlip"`
-	RPICameraVFlip             bool      `json:"rpiCameraVFlip"`
-	RPICameraBrightness        float64   `json:"rpiCameraBrightness"`
-	RPICameraContrast          float64   `json:"rpiCameraContrast"`
-	RPICameraSaturation        float64   `json:"rpiCameraSaturation"`
-	RPICameraSharpness         float64   `json:"rpiCameraSharpness"`
-	RPICameraExposure          string    `json:"rpiCameraExposure"`
-	RPICameraAWB               string    `json:"rpiCameraAWB"`
-	RPICameraAWBGains          []float64 `json:"rpiCameraAWBGains"`
-	RPICameraDenoise           string    `json:"rpiCameraDenoise"`
-	RPICameraShutter           uint      `json:"rpiCameraShutter"`
-	RPICameraMetering          string    `json:"rpiCameraMetering"`
-	RPICameraGain              float64   `json:"rpiCameraGain"`
-	RPICameraEV                float64   `json:"rpiCameraEV"`
-	RPICameraROI               string    `json:"rpiCameraROI"`
-	RPICameraHDR               bool      `json:"rpiCameraHDR"`
-	RPICameraTuningFile        string    `json:"rpiCameraTuningFile"`
-	RPICameraMode              string    `json:"rpiCameraMode"`
-	RPICameraFPS               float64   `json:"rpiCameraFPS"`
-	RPICameraAfMode            string    `json:"rpiCameraAfMode"`
-	RPICameraAfRange           string    `json:"rpiCameraAfRange"`
-	RPICameraAfSpeed           string    `json:"rpiCameraAfSpeed"`
-	RPICameraLensPosition      float64   `json:"rpiCameraLensPosition"`
-	RPICameraAfWindow          string    `json:"rpiCameraAfWindow"`
-	RPICameraFlickerPeriod     uint      `json:"rpiCameraFlickerPeriod"`
-	RPICameraTextOverlayEnable bool      `json:"rpiCameraTextOverlayEnable"`
-	RPICameraTextOverlay       string    `json:"rpiCameraTextOverlay"`
-	RPICameraCodec             string    `json:"rpiCameraCodec"`
-	RPICameraIDRPeriod         uint      `json:"rpiCameraIDRPeriod"`
-	RPICameraBitrate           uint      `json:"rpiCameraBitrate"`
-	RPICameraProfile           string    `json:"rpiCameraProfile"`
-	RPICameraLevel             string    `json:"rpiCameraLevel"`
+	RPICameraCamID                uint      `json:"rpiCameraCamID"`
+	RPICameraSecondary            bool      `json:"rpiCameraSecondary"`
+	RPICameraWidth                uint      `json:"rpiCameraWidth"`
+	RPICameraHeight               uint      `json:"rpiCameraHeight"`
+	RPICameraHFlip                bool      `json:"rpiCameraHFlip"`
+	RPICameraVFlip                bool      `json:"rpiCameraVFlip"`
+	RPICameraBrightness           float64   `json:"rpiCameraBrightness"`
+	RPICameraContrast             float64   `json:"rpiCameraContrast"`
+	RPICameraSaturation           float64   `json:"rpiCameraSaturation"`
+	RPICameraSharpness            float64   `json:"rpiCameraSharpness"`
+	RPICameraExposure             string    `json:"rpiCameraExposure"`
+	RPICameraAWB                  string    `json:"rpiCameraAWB"`
+	RPICameraAWBGains             []float64 `json:"rpiCameraAWBGains"`
+	RPICameraDenoise              string    `json:"rpiCameraDenoise"`
+	RPICameraShutter              uint      `json:"rpiCameraShutter"`
+	RPICameraMetering             string    `json:"rpiCameraMetering"`
+	RPICameraGain                 float64   `json:"rpiCameraGain"`
+	RPICameraEV                   float64   `json:"rpiCameraEV"`
+	RPICameraROI                  string    `json:"rpiCameraROI"`
+	RPICameraHDR                  bool      `json:"rpiCameraHDR"`
+	RPICameraTuningFile           string    `json:"rpiCameraTuningFile"`
+	RPICameraMode                 string    `json:"rpiCameraMode"`
+	RPICameraFPS                  float64   `json:"rpiCameraFPS"`
+	RPICameraAfMode               string    `json:"rpiCameraAfMode"`
+	RPICameraAfRange              string    `json:"rpiCameraAfRange"`
+	RPICameraAfSpeed              string    `json:"rpiCameraAfSpeed"`
+	RPICameraLensPosition         float64   `json:"rpiCameraLensPosition"`
+	RPICameraAfWindow             string    `json:"rpiCameraAfWindow"`
+	RPICameraFlickerPeriod        uint      `json:"rpiCameraFlickerPeriod"`
+	RPICameraTextOverlayEnable    bool      `json:"rpiCameraTextOverlayEnable"`
+	RPICameraTextOverlay          string    `json:"rpiCameraTextOverlay"`
+	RPICameraCodec                string    `json:"rpiCameraCodec"`
+	RPICameraIDRPeriod            uint      `json:"rpiCameraIDRPeriod"`
+	RPICameraBitrate              uint      `json:"rpiCameraBitrate"`
+	RPICameraProfile              string    `json:"rpiCameraProfile"`
+	RPICameraLevel                string    `json:"rpiCameraLevel"`
+	RPICameraJPEGQuality          uint      `json:"rpiCameraJPEGQuality"`
+	RPICameraPrimaryName          string    `json:"-"` // filled by Check()
+	RPICameraSecondaryWidth       uint      `json:"-"` // filled by Check()
+	RPICameraSecondaryHeight      uint      `json:"-"` // filled by Check()
+	RPICameraSecondaryFPS         float64   `json:"-"` // filled by Check()
+	RPICameraSecondaryJPEGQuality uint      `json:"-"` // filled by Check()
 
 	// Hooks
-	RunOnInit                  string         `json:"runOnInit"`
-	RunOnInitRestart           bool           `json:"runOnInitRestart"`
-	RunOnDemand                string         `json:"runOnDemand"`
-	RunOnDemandRestart         bool           `json:"runOnDemandRestart"`
-	RunOnDemandStartTimeout    StringDuration `json:"runOnDemandStartTimeout"`
-	RunOnDemandCloseAfter      StringDuration `json:"runOnDemandCloseAfter"`
-	RunOnUnDemand              string         `json:"runOnUnDemand"`
-	RunOnReady                 string         `json:"runOnReady"`
-	RunOnReadyRestart          bool           `json:"runOnReadyRestart"`
-	RunOnNotReady              string         `json:"runOnNotReady"`
-	RunOnRead                  string         `json:"runOnRead"`
-	RunOnReadRestart           bool           `json:"runOnReadRestart"`
-	RunOnUnread                string         `json:"runOnUnread"`
-	RunOnRecordSegmentCreate   string         `json:"runOnRecordSegmentCreate"`
-	RunOnRecordSegmentComplete string         `json:"runOnRecordSegmentComplete"`
+	RunOnInit                  string   `json:"runOnInit"`
+	RunOnInitRestart           bool     `json:"runOnInitRestart"`
+	RunOnDemand                string   `json:"runOnDemand"`
+	RunOnDemandRestart         bool     `json:"runOnDemandRestart"`
+	RunOnDemandStartTimeout    Duration `json:"runOnDemandStartTimeout"`
+	RunOnDemandCloseAfter      Duration `json:"runOnDemandCloseAfter"`
+	RunOnUnDemand              string   `json:"runOnUnDemand"`
+	RunOnReady                 string   `json:"runOnReady"`
+	RunOnReadyRestart          bool     `json:"runOnReadyRestart"`
+	RunOnNotReady              string   `json:"runOnNotReady"`
+	RunOnRead                  string   `json:"runOnRead"`
+	RunOnReadRestart           bool     `json:"runOnReadRestart"`
+	RunOnUnread                string   `json:"runOnUnread"`
+	RunOnRecordSegmentCreate   string   `json:"runOnRecordSegmentCreate"`
+	RunOnRecordSegmentComplete string   `json:"runOnRecordSegmentComplete"`
 }
 
 func (pconf *Path) setDefaults() {
 	// General
 	pconf.Source = "publisher"
-	pconf.SourceOnDemandStartTimeout = 10 * StringDuration(time.Second)
-	pconf.SourceOnDemandCloseAfter = 10 * StringDuration(time.Second)
+	pconf.SourceOnDemandStartTimeout = 10 * Duration(time.Second)
+	pconf.SourceOnDemandCloseAfter = 10 * Duration(time.Second)
 
 	// Record
 	pconf.RecordPath = "./recordings/%path/%Y-%m-%d_%H-%M-%S-%f"
 	pconf.RecordFormat = RecordFormatFMP4
-	pconf.RecordPartDuration = StringDuration(1 * time.Second)
-	pconf.RecordSegmentDuration = 3600 * StringDuration(time.Second)
-	pconf.RecordDeleteAfter = 24 * 3600 * StringDuration(time.Second)
+	pconf.RecordPartDuration = Duration(1 * time.Second)
+	pconf.RecordSegmentDuration = 3600 * Duration(time.Second)
+	pconf.RecordDeleteAfter = 24 * 3600 * Duration(time.Second)
 
 	// Publisher source
 	pconf.OverridePublisher = true
@@ -221,10 +252,11 @@ func (pconf *Path) setDefaults() {
 	pconf.RPICameraBitrate = 5000000
 	pconf.RPICameraProfile = "main"
 	pconf.RPICameraLevel = "4.1"
+	pconf.RPICameraJPEGQuality = 60
 
 	// Hooks
-	pconf.RunOnDemandStartTimeout = 10 * StringDuration(time.Second)
-	pconf.RunOnDemandCloseAfter = 10 * StringDuration(time.Second)
+	pconf.RunOnDemandStartTimeout = 10 * Duration(time.Second)
+	pconf.RunOnDemandCloseAfter = 10 * Duration(time.Second)
 }
 
 func newPath(defaults *Path, partial *OptionalPath) *Path {
@@ -248,6 +280,11 @@ func (pconf Path) Clone() *Path {
 	}
 
 	dest.Regexp = pconf.Regexp
+	dest.RPICameraPrimaryName = pconf.RPICameraPrimaryName
+	dest.RPICameraSecondaryWidth = pconf.RPICameraSecondaryWidth
+	dest.RPICameraSecondaryHeight = pconf.RPICameraSecondaryHeight
+	dest.RPICameraSecondaryFPS = pconf.RPICameraSecondaryFPS
+	dest.RPICameraSecondaryJPEGQuality = pconf.RPICameraSecondaryJPEGQuality
 
 	return &dest
 }
@@ -256,6 +293,7 @@ func (pconf *Path) validate(
 	conf *Conf,
 	name string,
 	deprecatedCredentialsMode bool,
+	l logger.Writer,
 ) error {
 	pconf.Name = name
 
@@ -264,7 +302,7 @@ func (pconf *Path) validate(
 		pconf.Regexp = regexp.MustCompile("^.*$")
 
 	case name == "" || name[0] != '~': // normal path
-		err := isValidPathName(name)
+		err := IsValidPathName(name)
 		if err != nil {
 			return fmt.Errorf("invalid path name '%s': %w", name, err)
 		}
@@ -277,21 +315,58 @@ func (pconf *Path) validate(
 		pconf.Regexp = regexp
 	}
 
-	// General
+	// common configuration errors
 
 	if pconf.Source != "publisher" && pconf.Source != "redirect" &&
 		pconf.Regexp != nil && !pconf.SourceOnDemand {
 		return fmt.Errorf("a path with a regular expression (or path 'all') and a static source" +
 			" must have 'sourceOnDemand' set to true")
 	}
+
+	if pconf.SRTPublishPassphrase != "" && pconf.Source != "publisher" {
+		return fmt.Errorf("'srtPublishPassphase' can only be used when source is 'publisher'")
+	}
+
+	if pconf.SourceOnDemand && pconf.Source == "publisher" {
+		return fmt.Errorf("'sourceOnDemand' is useless when source is 'publisher'")
+	}
+
+	if pconf.Source != "redirect" && pconf.SourceRedirect != "" {
+		return fmt.Errorf("'sourceRedirect' is useless when source is not 'redirect'")
+	}
+
+	// source-dependent settings
+
 	switch {
 	case pconf.Source == "publisher":
+		if pconf.DisablePublisherOverride != nil {
+			l.Log(logger.Warn, "parameter 'disablePublisherOverride' is deprecated "+
+				"and has been replaced with 'overridePublisher'")
+			pconf.OverridePublisher = !*pconf.DisablePublisherOverride
+		}
+
+		if pconf.SRTPublishPassphrase != "" {
+			err := checkSRTPassphrase(pconf.SRTPublishPassphrase)
+			if err != nil {
+				return fmt.Errorf("invalid 'srtPublishPassphrase': %w", err)
+			}
+		}
 
 	case strings.HasPrefix(pconf.Source, "rtsp://") ||
 		strings.HasPrefix(pconf.Source, "rtsps://"):
 		_, err := base.ParseURL(pconf.Source)
 		if err != nil {
 			return fmt.Errorf("'%s' is not a valid URL", pconf.Source)
+		}
+
+		if pconf.SourceProtocol != nil {
+			l.Log(logger.Warn, "parameter 'sourceProtocol' is deprecated and has been replaced with 'rtspTransport'")
+			pconf.RTSPTransport = *pconf.SourceProtocol
+		}
+
+		if pconf.SourceAnyPortEnable != nil {
+			l.Log(logger.Warn, "parameter 'sourceAnyPortEnable' is deprecated and has been replaced with 'rtspAnyPort'")
+			pconf.RTSPAnyPort = *pconf.SourceAnyPortEnable
 		}
 
 	case strings.HasPrefix(pconf.Source, "rtmp://") ||
@@ -316,6 +391,7 @@ func (pconf *Path) validate(
 		if err != nil {
 			return fmt.Errorf("'%s' is not a valid URL", pconf.Source)
 		}
+
 		if u.Scheme != "http" && u.Scheme != "https" {
 			return fmt.Errorf("'%s' is not a valid URL", pconf.Source)
 		}
@@ -336,7 +412,6 @@ func (pconf *Path) validate(
 		}
 
 	case strings.HasPrefix(pconf.Source, "srt://"):
-
 		_, err := gourl.Parse(pconf.Source)
 		if err != nil {
 			return fmt.Errorf("'%s' is not a valid URL", pconf.Source)
@@ -350,51 +425,173 @@ func (pconf *Path) validate(
 		}
 
 	case pconf.Source == "redirect":
+		if pconf.SourceRedirect == "" {
+			return fmt.Errorf("source redirect must be filled")
+		}
+
+		err := checkRedirect(pconf.SourceRedirect)
+		if err != nil {
+			return err
+		}
 
 	case pconf.Source == "rpiCamera":
+
+		if pconf.RPICameraWidth == 0 {
+			return fmt.Errorf("invalid 'rpiCameraWidth' value")
+		}
+
+		if pconf.RPICameraHeight == 0 {
+			return fmt.Errorf("invalid 'rpiCameraHeight' value")
+		}
+
+		switch pconf.RPICameraExposure {
+		case "normal", "short", "long", "custom":
+		default:
+			return fmt.Errorf("invalid 'rpiCameraExposure' value")
+		}
+
+		switch pconf.RPICameraAWB {
+		case "auto", "incandescent", "tungsten", "fluorescent", "indoor", "daylight", "cloudy", "custom":
+		default:
+			return fmt.Errorf("invalid 'rpiCameraAWB' value")
+		}
+
+		if len(pconf.RPICameraAWBGains) != 2 {
+			return fmt.Errorf("invalid 'rpiCameraAWBGains' value")
+		}
+
+		switch pconf.RPICameraDenoise {
+		case "off", "cdn_off", "cdn_fast", "cdn_hq":
+		default:
+			return fmt.Errorf("invalid 'rpiCameraDenoise' value")
+		}
+
+		switch pconf.RPICameraMetering {
+		case "centre", "spot", "matrix", "custom":
+		default:
+			return fmt.Errorf("invalid 'rpiCameraMetering' value")
+		}
+
+		switch pconf.RPICameraAfMode {
+		case "auto", "manual", "continuous":
+		default:
+			return fmt.Errorf("invalid 'rpiCameraAfMode' value")
+		}
+
+		switch pconf.RPICameraAfRange {
+		case "normal", "macro", "full":
+		default:
+			return fmt.Errorf("invalid 'rpiCameraAfRange' value")
+		}
+
+		switch pconf.RPICameraAfSpeed {
+		case "normal", "fast":
+		default:
+			return fmt.Errorf("invalid 'rpiCameraAfSpeed' value")
+		}
+
+		if !pconf.RPICameraSecondary {
+			switch pconf.RPICameraCodec {
+			case "auto", "hardwareH264", "softwareH264":
+			default:
+				return fmt.Errorf("supported codecs for a primary RPI Camera stream are auto, hardwareH264, softwareH264")
+			}
+
+			for otherName, otherPath := range conf.Paths {
+				if otherPath != pconf &&
+					otherPath != nil &&
+					otherPath.Source == "rpiCamera" &&
+					otherPath.RPICameraCamID == pconf.RPICameraCamID &&
+					!otherPath.RPICameraSecondary {
+					return fmt.Errorf("'rpiCamera' with same camera ID %d is used as source in two paths, '%s' and '%s'",
+						pconf.RPICameraCamID, name, otherName)
+				}
+			}
+		} else {
+			switch pconf.RPICameraCodec {
+			case "auto", "mjpeg":
+			default:
+				return fmt.Errorf("supported codecs for a secondary RPI Camera stream are auto, mjpeg")
+			}
+
+			var primaryName string
+			var primary *Path
+
+			for otherPathName, otherPath := range conf.Paths {
+				if otherPath != pconf &&
+					otherPath != nil &&
+					otherPath.Source == "rpiCamera" &&
+					otherPath.RPICameraCamID == pconf.RPICameraCamID &&
+					!otherPath.RPICameraSecondary {
+					primaryName = otherPathName
+					primary = otherPath
+					break
+				}
+			}
+
+			if primary == nil {
+				return fmt.Errorf("cannot find a primary RPI Camera stream to associate with the secondary stream")
+			}
+
+			if primary.RPICameraSecondaryWidth != 0 {
+				return fmt.Errorf("a primary RPI Camera stream is associated with multiple secondary streams")
+			}
+
+			pconf.RPICameraPrimaryName = primaryName
+			primary.RPICameraSecondaryWidth = pconf.RPICameraWidth
+			primary.RPICameraSecondaryHeight = pconf.RPICameraHeight
+			primary.RPICameraSecondaryFPS = pconf.RPICameraFPS
+			primary.RPICameraSecondaryJPEGQuality = pconf.RPICameraJPEGQuality
+		}
 
 	default:
 		return fmt.Errorf("invalid source: '%s'", pconf.Source)
 	}
-	if pconf.SourceOnDemand {
-		if pconf.Source == "publisher" {
-			return fmt.Errorf("'sourceOnDemand' is useless when source is 'publisher'")
-		}
-	}
+
 	if pconf.SRTReadPassphrase != "" {
-		err := srtCheckPassphrase(pconf.SRTReadPassphrase)
+		err := checkSRTPassphrase(pconf.SRTReadPassphrase)
 		if err != nil {
 			return fmt.Errorf("invalid 'readRTPassphrase': %w", err)
 		}
 	}
+
 	if pconf.Fallback != "" {
-		if strings.HasPrefix(pconf.Fallback, "/") {
-			err := isValidPathName(pconf.Fallback[1:])
-			if err != nil {
-				return fmt.Errorf("'%s': %w", pconf.Fallback, err)
-			}
-		} else {
-			_, err := base.ParseURL(pconf.Fallback)
-			if err != nil {
-				return fmt.Errorf("'%s' is not a valid RTSP URL", pconf.Fallback)
-			}
+		err := checkRedirect(pconf.Fallback)
+		if err != nil {
+			return err
 		}
 	}
 
 	// Record
 
-	if conf.Playback {
-		if !strings.Contains(pconf.RecordPath, "%Y") ||
+	if pconf.Playback != nil {
+		l.Log(logger.Warn, "parameter 'playback' is deprecated and has no effect")
+	}
+
+	if !strings.Contains(pconf.RecordPath, "%path") {
+		return fmt.Errorf("'recordPath' must contain %%path")
+	}
+
+	if !strings.Contains(pconf.RecordPath, "%s") &&
+		(!strings.Contains(pconf.RecordPath, "%Y") ||
 			!strings.Contains(pconf.RecordPath, "%m") ||
 			!strings.Contains(pconf.RecordPath, "%d") ||
 			!strings.Contains(pconf.RecordPath, "%H") ||
 			!strings.Contains(pconf.RecordPath, "%M") ||
-			!strings.Contains(pconf.RecordPath, "%S") ||
-			!strings.Contains(pconf.RecordPath, "%f") {
-			return fmt.Errorf("record path '%s' is missing one of the mandatory elements"+
-				" for the playback server to work: %%Y %%m %%d %%H %%M %%S %%f",
-				pconf.RecordPath)
-		}
+			!strings.Contains(pconf.RecordPath, "%S")) {
+		return fmt.Errorf("'recordPath' must contain either %%s or %%Y %%m %%d %%H %%M %%S")
+	}
+
+	if conf.Playback && !strings.Contains(pconf.RecordPath, "%f") {
+		return fmt.Errorf("'recordPath' must contain %%f")
+	}
+
+	if pconf.RecordSegmentDuration > Duration(24*time.Hour) { // avoid overflowing DurationV0 of mvhd
+		return fmt.Errorf("maximum segment duration is 1 day")
+	}
+
+	if pconf.RecordDeleteAfter != 0 && pconf.RecordDeleteAfter < pconf.RecordSegmentDuration {
+		return fmt.Errorf("'recordDeleteAfter' cannot be lower than 'recordSegmentDuration'")
 	}
 
 	// Authentication (deprecated)
@@ -463,99 +660,6 @@ func (pconf *Path) validate(
 				}},
 			})
 		}()
-	}
-
-	// Publisher source
-
-	if pconf.DisablePublisherOverride != nil {
-		pconf.OverridePublisher = !*pconf.DisablePublisherOverride
-	}
-	if pconf.SRTPublishPassphrase != "" {
-		if pconf.Source != "publisher" {
-			return fmt.Errorf("'srtPublishPassphase' can only be used when source is 'publisher'")
-		}
-
-		err := srtCheckPassphrase(pconf.SRTPublishPassphrase)
-		if err != nil {
-			return fmt.Errorf("invalid 'srtPublishPassphrase': %w", err)
-		}
-	}
-
-	// RTSP source
-
-	if pconf.SourceProtocol != nil {
-		pconf.RTSPTransport = *pconf.SourceProtocol
-	}
-	if pconf.SourceAnyPortEnable != nil {
-		pconf.RTSPAnyPort = *pconf.SourceAnyPortEnable
-	}
-
-	// Redirect source
-
-	if pconf.Source == "redirect" {
-		if pconf.SourceRedirect == "" {
-			return fmt.Errorf("source redirect must be filled")
-		}
-
-		_, err := base.ParseURL(pconf.SourceRedirect)
-		if err != nil {
-			return fmt.Errorf("'%s' is not a valid RTSP URL", pconf.SourceRedirect)
-		}
-	}
-
-	// Raspberry Pi Camera source
-
-	if pconf.Source == "rpiCamera" {
-		for otherName, otherPath := range conf.Paths {
-			if otherPath != pconf && otherPath != nil &&
-				otherPath.Source == "rpiCamera" && otherPath.RPICameraCamID == pconf.RPICameraCamID {
-				return fmt.Errorf("'rpiCamera' with same camera ID %d is used as source in two paths, '%s' and '%s'",
-					pconf.RPICameraCamID, name, otherName)
-			}
-		}
-	}
-	switch pconf.RPICameraExposure {
-	case "normal", "short", "long", "custom":
-	default:
-		return fmt.Errorf("invalid 'rpiCameraExposure' value")
-	}
-	switch pconf.RPICameraAWB {
-	case "auto", "incandescent", "tungsten", "fluorescent", "indoor", "daylight", "cloudy", "custom":
-	default:
-		return fmt.Errorf("invalid 'rpiCameraAWB' value")
-	}
-	if len(pconf.RPICameraAWBGains) != 2 {
-		return fmt.Errorf("invalid 'rpiCameraAWBGains' value")
-	}
-	switch pconf.RPICameraDenoise {
-	case "off", "cdn_off", "cdn_fast", "cdn_hq":
-	default:
-		return fmt.Errorf("invalid 'rpiCameraDenoise' value")
-	}
-	switch pconf.RPICameraMetering {
-	case "centre", "spot", "matrix", "custom":
-	default:
-		return fmt.Errorf("invalid 'rpiCameraMetering' value")
-	}
-	switch pconf.RPICameraAfMode {
-	case "auto", "manual", "continuous":
-	default:
-		return fmt.Errorf("invalid 'rpiCameraAfMode' value")
-	}
-	switch pconf.RPICameraAfRange {
-	case "normal", "macro", "full":
-	default:
-		return fmt.Errorf("invalid 'rpiCameraAfRange' value")
-	}
-	switch pconf.RPICameraAfSpeed {
-	case "normal", "fast":
-	default:
-		return fmt.Errorf("invalid 'rpiCameraAfSpeed' value")
-	}
-	switch pconf.RPICameraCodec {
-	case "auto", "hardwareH264", "softwareH264":
-	default:
-		return fmt.Errorf("invalid 'rpiCameraCodec' value")
 	}
 
 	// Hooks

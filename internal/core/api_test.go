@@ -17,11 +17,11 @@ import (
 
 	"github.com/bluenviron/gortsplib/v4"
 	"github.com/bluenviron/gortsplib/v4/pkg/description"
-	"github.com/bluenviron/mediacommon/pkg/formats/mpegts"
+	"github.com/bluenviron/mediacommon/v2/pkg/formats/mpegts"
 	srt "github.com/datarhei/gosrt"
 	"github.com/google/uuid"
 	"github.com/pion/rtp"
-	pwebrtc "github.com/pion/webrtc/v3"
+	pwebrtc "github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bluenviron/mediamtx/internal/protocols/rtmp"
@@ -151,9 +151,9 @@ func TestAPIPathsList(t *testing.T) {
 		defer os.Remove(serverKeyFpath)
 
 		p, ok := newInstance("api: yes\n" +
-			"encryption: optional\n" +
-			"serverCert: " + serverCertFpath + "\n" +
-			"serverKey: " + serverKeyFpath + "\n" +
+			"rtspEncryption: optional\n" +
+			"rtspServerCert: " + serverCertFpath + "\n" +
+			"rtspServerKey: " + serverKeyFpath + "\n" +
 			"paths:\n" +
 			"  mypath:\n")
 		require.Equal(t, true, ok)
@@ -367,10 +367,10 @@ func TestAPIProtocolListGet(t *testing.T) {
 
 			switch ca {
 			case "rtsps conns", "rtsps sessions":
-				conf += "protocols: [tcp]\n" +
-					"encryption: strict\n" +
-					"serverCert: " + serverCertFpath + "\n" +
-					"serverKey: " + serverKeyFpath + "\n"
+				conf += "rtspTransports: [tcp]\n" +
+					"rtspEncryption: strict\n" +
+					"rtspServerCert: " + serverCertFpath + "\n" +
+					"rtspServerKey: " + serverKeyFpath + "\n"
 
 			case "rtmps":
 				conf += "rtmpEncryption: strict\n" +
@@ -433,7 +433,10 @@ func TestAPIProtocolListGet(t *testing.T) {
 				conn, err := rtmp.NewClientConn(nconn, u, true)
 				require.NoError(t, err)
 
-				_, err = rtmp.NewWriter(conn, test.FormatH264, nil)
+				w, err := rtmp.NewWriter(conn, test.FormatH264, nil)
+				require.NoError(t, err)
+
+				err = w.WriteH264(2*time.Second, 2*time.Second, [][]byte{{5, 2, 3, 4}})
 				require.NoError(t, err)
 
 				time.Sleep(500 * time.Millisecond)
@@ -528,7 +531,7 @@ func TestAPIProtocolListGet(t *testing.T) {
 					Log:        test.NilLogger,
 				}
 
-				_, err = c.Read(context.Background())
+				err = c.Initialize(context.Background())
 				require.NoError(t, err)
 				defer checkClose(t, c.Close)
 
@@ -545,10 +548,11 @@ func TestAPIProtocolListGet(t *testing.T) {
 				}
 
 				bw := bufio.NewWriter(conn)
-				w := mpegts.NewWriter(bw, []*mpegts.Track{track})
+				w := &mpegts.Writer{W: bw, Tracks: []*mpegts.Track{track}}
+				err = w.Initialize()
 				require.NoError(t, err)
 
-				err = w.WriteH264(track, 0, 0, true, [][]byte{{1}})
+				err = w.WriteH264(track, 0, 0, [][]byte{{1}})
 				require.NoError(t, err)
 
 				err = bw.Flush()
@@ -602,6 +606,7 @@ func TestAPIProtocolListGet(t *testing.T) {
 							"created":       out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["created"],
 							"id":            out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["id"],
 							"remoteAddr":    out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["remoteAddr"],
+							"session":       out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["session"],
 						},
 					},
 				}, out1)
@@ -612,15 +617,23 @@ func TestAPIProtocolListGet(t *testing.T) {
 					"itemCount": float64(1),
 					"items": []interface{}{
 						map[string]interface{}{
-							"bytesReceived": float64(0),
-							"bytesSent":     out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["bytesSent"],
-							"created":       out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["created"],
-							"id":            out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["id"],
-							"path":          "mypath",
-							"query":         "key=val",
-							"remoteAddr":    out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["remoteAddr"],
-							"state":         "publish",
-							"transport":     "UDP",
+							"bytesReceived":       float64(0),
+							"bytesSent":           out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["bytesSent"],
+							"created":             out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["created"],
+							"id":                  out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["id"],
+							"path":                "mypath",
+							"query":               "key=val",
+							"remoteAddr":          out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["remoteAddr"],
+							"state":               "publish",
+							"transport":           "UDP",
+							"rtpPacketsReceived":  float64(0),
+							"rtpPacketsSent":      float64(0),
+							"rtpPacketsLost":      float64(0),
+							"rtpPacketsInError":   float64(0),
+							"rtpPacketsJitter":    float64(0),
+							"rtcpPacketsReceived": float64(0),
+							"rtcpPacketsSent":     float64(0),
+							"rtcpPacketsInError":  float64(0),
 						},
 					},
 				}, out1)
@@ -636,6 +649,7 @@ func TestAPIProtocolListGet(t *testing.T) {
 							"created":       out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["created"],
 							"id":            out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["id"],
 							"remoteAddr":    out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["remoteAddr"],
+							"session":       out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["session"],
 						},
 					},
 				}, out1)
@@ -646,15 +660,23 @@ func TestAPIProtocolListGet(t *testing.T) {
 					"itemCount": float64(1),
 					"items": []interface{}{
 						map[string]interface{}{
-							"bytesReceived": float64(0),
-							"bytesSent":     out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["bytesSent"],
-							"created":       out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["created"],
-							"id":            out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["id"],
-							"path":          "mypath",
-							"query":         "key=val",
-							"remoteAddr":    out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["remoteAddr"],
-							"state":         "publish",
-							"transport":     "TCP",
+							"bytesReceived":       float64(0),
+							"bytesSent":           out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["bytesSent"],
+							"created":             out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["created"],
+							"id":                  out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["id"],
+							"path":                "mypath",
+							"query":               "key=val",
+							"remoteAddr":          out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["remoteAddr"],
+							"state":               "publish",
+							"transport":           "TCP",
+							"rtpPacketsReceived":  float64(0),
+							"rtpPacketsSent":      float64(0),
+							"rtpPacketsLost":      float64(0),
+							"rtpPacketsInError":   float64(0),
+							"rtpPacketsJitter":    float64(0),
+							"rtcpPacketsReceived": float64(0),
+							"rtcpPacketsSent":     float64(0),
+							"rtcpPacketsInError":  float64(0),
 						},
 					},
 				}, out1)
@@ -767,7 +789,7 @@ func TestAPIProtocolListGet(t *testing.T) {
 							"packetsFlowWindow":             float64(25600),
 							"packetsReceiveBuf":             float64(0),
 							"packetsReceived":               float64(1),
-							"packetsReceivedACK":            float64(0),
+							"packetsReceivedACK":            out1.(map[string]interface{})["items"].([]interface{})[0].(map[string]interface{})["packetsReceivedACK"],
 							"packetsReceivedAvgBelatedTime": float64(0),
 							"packetsReceivedBelated":        float64(0),
 							"packetsReceivedDrop":           float64(0),
@@ -842,10 +864,10 @@ func TestAPIProtocolGetNotFound(t *testing.T) {
 
 			switch ca {
 			case "rtsps conns", "rtsps sessions":
-				conf += "protocols: [tcp]\n" +
-					"encryption: strict\n" +
-					"serverCert: " + serverCertFpath + "\n" +
-					"serverKey: " + serverKeyFpath + "\n"
+				conf += "rtspTransports: [tcp]\n" +
+					"rtspEncryption: strict\n" +
+					"rtspServerCert: " + serverCertFpath + "\n" +
+					"rtspServerKey: " + serverKeyFpath + "\n"
 
 			case "rtmps":
 				conf += "rtmpEncryption: strict\n" +
@@ -939,10 +961,10 @@ func TestAPIProtocolKick(t *testing.T) {
 			conf := "api: yes\n"
 
 			if ca == "rtsps" {
-				conf += "protocols: [tcp]\n" +
-					"encryption: strict\n" +
-					"serverCert: " + serverCertFpath + "\n" +
-					"serverKey: " + serverKeyFpath + "\n"
+				conf += "rtspTransports: [tcp]\n" +
+					"rtspEncryption: strict\n" +
+					"rtspServerCert: " + serverCertFpath + "\n" +
+					"rtspServerKey: " + serverKeyFpath + "\n"
 			}
 
 			conf += "paths:\n" +
@@ -988,18 +1010,15 @@ func TestAPIProtocolKick(t *testing.T) {
 				conn, err := rtmp.NewClientConn(nconn, u, true)
 				require.NoError(t, err)
 
-				_, err = rtmp.NewWriter(conn, test.FormatH264, nil)
+				w, err := rtmp.NewWriter(conn, test.FormatH264, nil)
+				require.NoError(t, err)
+
+				err = w.WriteH264(2*time.Second, 2*time.Second, [][]byte{{5, 2, 3, 4}})
 				require.NoError(t, err)
 
 			case "webrtc":
 				u, err := url.Parse("http://localhost:8889/mypath/whip")
 				require.NoError(t, err)
-
-				c := &whip.Client{
-					HTTPClient: hc,
-					URL:        u,
-					Log:        test.NilLogger,
-				}
 
 				track := &webrtc.OutgoingTrack{
 					Caps: pwebrtc.RTPCodecCapability{
@@ -1009,7 +1028,15 @@ func TestAPIProtocolKick(t *testing.T) {
 					},
 				}
 
-				err = c.Publish(context.Background(), []*webrtc.OutgoingTrack{track})
+				c := &whip.Client{
+					HTTPClient:     hc,
+					URL:            u,
+					Log:            test.NilLogger,
+					Publish:        true,
+					OutgoingTracks: []*webrtc.OutgoingTrack{track},
+				}
+
+				err = c.Initialize(context.Background())
 				require.NoError(t, err)
 				defer func() {
 					require.Error(t, c.Close())
@@ -1028,10 +1055,11 @@ func TestAPIProtocolKick(t *testing.T) {
 				}
 
 				bw := bufio.NewWriter(conn)
-				w := mpegts.NewWriter(bw, []*mpegts.Track{track})
+				w := &mpegts.Writer{W: bw, Tracks: []*mpegts.Track{track}}
+				err = w.Initialize()
 				require.NoError(t, err)
 
-				err = w.WriteH264(track, 0, 0, true, [][]byte{{1}})
+				err = w.WriteH264(track, 0, 0, [][]byte{{1}})
 				require.NoError(t, err)
 
 				err = bw.Flush()
@@ -1096,10 +1124,10 @@ func TestAPIProtocolKickNotFound(t *testing.T) {
 			conf := "api: yes\n"
 
 			if ca == "rtsps" {
-				conf += "protocols: [tcp]\n" +
-					"encryption: strict\n" +
-					"serverCert: " + serverCertFpath + "\n" +
-					"serverKey: " + serverKeyFpath + "\n"
+				conf += "rtspTransports: [tcp]\n" +
+					"rtspEncryption: strict\n" +
+					"rtspServerCert: " + serverCertFpath + "\n" +
+					"rtspServerKey: " + serverKeyFpath + "\n"
 			}
 
 			conf += "paths:\n" +

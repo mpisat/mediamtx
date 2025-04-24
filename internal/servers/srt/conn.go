@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/bluenviron/gortsplib/v4/pkg/description"
-	mcmpegts "github.com/bluenviron/mediacommon/pkg/formats/mpegts"
+	mcmpegts "github.com/bluenviron/mediacommon/v2/pkg/formats/mpegts"
 	srt "github.com/datarhei/gosrt"
 	"github.com/google/uuid"
 
 	"github.com/bluenviron/mediamtx/internal/auth"
 	"github.com/bluenviron/mediamtx/internal/conf"
+	"github.com/bluenviron/mediamtx/internal/counterdumper"
 	"github.com/bluenviron/mediamtx/internal/defs"
 	"github.com/bluenviron/mediamtx/internal/externalcmd"
 	"github.com/bluenviron/mediamtx/internal/hooks"
@@ -51,8 +52,8 @@ const (
 type conn struct {
 	parentCtx           context.Context
 	rtspAddress         string
-	readTimeout         conf.StringDuration
-	writeTimeout        conf.StringDuration
+	readTimeout         conf.Duration
+	writeTimeout        conf.Duration
 	udpMaxPayloadSize   int
 	connReq             srt.ConnRequest
 	runOnConnect        string
@@ -141,17 +142,17 @@ func (c *conn) runPublish(streamID *streamID) error {
 		Author: c,
 		AccessRequest: defs.PathAccessRequest{
 			Name:    streamID.path,
+			Query:   streamID.query,
 			IP:      c.ip(),
 			Publish: true,
 			User:    streamID.user,
 			Pass:    streamID.pass,
 			Proto:   auth.ProtocolSRT,
 			ID:      &c.uuid,
-			Query:   streamID.query,
 		},
 	})
 	if err != nil {
-		var terr *auth.Error
+		var terr auth.Error
 		if errors.As(err, &terr) {
 			// wait some seconds to mitigate brute force attacks
 			<-time.After(auth.PauseAfterError)
@@ -201,15 +202,30 @@ func (c *conn) runPublish(streamID *streamID) error {
 
 func (c *conn) runPublishReader(sconn srt.Conn, path defs.Path) error {
 	sconn.SetReadDeadline(time.Now().Add(time.Duration(c.readTimeout)))
-	r, err := mcmpegts.NewReader(mcmpegts.NewBufferedReader(sconn))
+	r := &mcmpegts.Reader{R: mcmpegts.NewBufferedReader(sconn)}
+	err := r.Initialize()
 	if err != nil {
 		return err
 	}
 
-	decodeErrLogger := logger.NewLimitedLogger(c)
+	decodeErrors := &counterdumper.CounterDumper{
+		OnReport: func(val uint64) {
+			c.Log(logger.Warn, "%d decode %s",
+				val,
+				func() string {
+					if val == 1 {
+						return "error"
+					}
+					return "errors"
+				}())
+		},
+	}
 
-	r.OnDecodeError(func(err error) {
-		decodeErrLogger.Log(logger.Warn, err.Error())
+	decodeErrors.Start()
+	defer decodeErrors.Stop()
+
+	r.OnDecodeError(func(_ error) {
+		decodeErrors.Increase()
 	})
 
 	var stream *stream.Stream
@@ -241,16 +257,16 @@ func (c *conn) runRead(streamID *streamID) error {
 		Author: c,
 		AccessRequest: defs.PathAccessRequest{
 			Name:  streamID.path,
+			Query: streamID.query,
 			IP:    c.ip(),
 			User:  streamID.user,
 			Pass:  streamID.pass,
 			Proto: auth.ProtocolSRT,
 			ID:    &c.uuid,
-			Query: streamID.query,
 		},
 	})
 	if err != nil {
-		var terr *auth.Error
+		var terr auth.Error
 		if errors.As(err, &terr) {
 			// wait some seconds to mitigate brute force attacks
 			<-time.After(auth.PauseAfterError)

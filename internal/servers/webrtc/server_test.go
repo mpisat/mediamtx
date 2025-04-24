@@ -22,7 +22,7 @@ import (
 	"github.com/bluenviron/mediamtx/internal/unit"
 	"github.com/google/uuid"
 	"github.com/pion/rtp"
-	pwebrtc "github.com/pion/webrtc/v3"
+	pwebrtc "github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,17 +52,18 @@ func (p *dummyPath) ExternalCmdEnv() externalcmd.Environment {
 }
 
 func (p *dummyPath) StartPublisher(req defs.PathStartPublisherReq) (*stream.Stream, error) {
-	var err error
-	p.stream, err = stream.New(
-		512,
-		1460,
-		req.Desc,
-		true,
-		test.NilLogger,
-	)
+	p.stream = &stream.Stream{
+		WriteQueueSize:     512,
+		UDPMaxPayloadSize:  1472,
+		Desc:               req.Desc,
+		GenerateRTPPackets: true,
+		Parent:             test.NilLogger,
+	}
+	err := p.stream.Initialize()
 	if err != nil {
 		return nil, err
 	}
+
 	close(p.streamCreated)
 	return p.stream, nil
 }
@@ -76,27 +77,9 @@ func (p *dummyPath) RemovePublisher(_ defs.PathRemovePublisherReq) {
 func (p *dummyPath) RemoveReader(_ defs.PathRemoveReaderReq) {
 }
 
-type dummyPathManager struct {
-	findPathConf func(req defs.PathFindPathConfReq) (*conf.Path, error)
-	addPublisher func(req defs.PathAddPublisherReq) (defs.Path, error)
-	addReader    func(req defs.PathAddReaderReq) (defs.Path, *stream.Stream, error)
-}
-
-func (pm *dummyPathManager) FindPathConf(req defs.PathFindPathConfReq) (*conf.Path, error) {
-	return pm.findPathConf(req)
-}
-
-func (pm *dummyPathManager) AddPublisher(req defs.PathAddPublisherReq) (defs.Path, error) {
-	return pm.addPublisher(req)
-}
-
-func (pm *dummyPathManager) AddReader(req defs.PathAddReaderReq) (defs.Path, *stream.Stream, error) {
-	return pm.addReader(req)
-}
-
 func initializeTestServer(t *testing.T) *Server {
-	pm := &dummyPathManager{
-		findPathConf: func(_ defs.PathFindPathConfReq) (*conf.Path, error) {
+	pm := &test.PathManager{
+		FindPathConfImpl: func(_ defs.PathFindPathConfReq) (*conf.Path, error) {
 			return &conf.Path{}, nil
 		},
 	}
@@ -108,15 +91,16 @@ func initializeTestServer(t *testing.T) *Server {
 		ServerCert:            "",
 		AllowOrigin:           "*",
 		TrustedProxies:        conf.IPNetworks{},
-		ReadTimeout:           conf.StringDuration(10 * time.Second),
+		ReadTimeout:           conf.Duration(10 * time.Second),
 		LocalUDPAddress:       "127.0.0.1:8887",
 		LocalTCPAddress:       "127.0.0.1:8887",
 		IPsFromInterfaces:     true,
 		IPsFromInterfacesList: []string{},
 		AdditionalHosts:       []string{},
 		ICEServers:            []conf.WebRTCICEServer{},
-		HandshakeTimeout:      conf.StringDuration(10 * time.Second),
-		TrackGatherTimeout:    conf.StringDuration(2 * time.Second),
+		HandshakeTimeout:      conf.Duration(10 * time.Second),
+		TrackGatherTimeout:    conf.Duration(2 * time.Second),
+		STUNGatherTimeout:     conf.Duration(5 * time.Second),
 		ExternalCmdPool:       nil,
 		PathManager:           pm,
 		Parent:                test.NilLogger,
@@ -179,8 +163,8 @@ func TestPreflightRequest(t *testing.T) {
 }
 
 func TestServerOptionsICEServer(t *testing.T) {
-	pathManager := &dummyPathManager{
-		findPathConf: func(_ defs.PathFindPathConfReq) (*conf.Path, error) {
+	pathManager := &test.PathManager{
+		FindPathConfImpl: func(_ defs.PathFindPathConfReq) (*conf.Path, error) {
 			return &conf.Path{}, nil
 		},
 	}
@@ -192,7 +176,7 @@ func TestServerOptionsICEServer(t *testing.T) {
 		ServerCert:            "",
 		AllowOrigin:           "",
 		TrustedProxies:        conf.IPNetworks{},
-		ReadTimeout:           conf.StringDuration(10 * time.Second),
+		ReadTimeout:           conf.Duration(10 * time.Second),
 		LocalUDPAddress:       "127.0.0.1:8887",
 		LocalTCPAddress:       "127.0.0.1:8887",
 		IPsFromInterfaces:     true,
@@ -203,8 +187,9 @@ func TestServerOptionsICEServer(t *testing.T) {
 			Username: "myuser",
 			Password: "mypass",
 		}},
-		HandshakeTimeout:   conf.StringDuration(10 * time.Second),
-		TrackGatherTimeout: conf.StringDuration(2 * time.Second),
+		HandshakeTimeout:   conf.Duration(10 * time.Second),
+		TrackGatherTimeout: conf.Duration(2 * time.Second),
+		STUNGatherTimeout:  conf.Duration(5 * time.Second),
 		ExternalCmdPool:    nil,
 		PathManager:        pathManager,
 		Parent:             test.NilLogger,
@@ -242,13 +227,19 @@ func TestServerPublish(t *testing.T) {
 		streamCreated: make(chan struct{}),
 	}
 
-	pathManager := &dummyPathManager{
-		findPathConf: func(req defs.PathFindPathConfReq) (*conf.Path, error) {
+	pathManager := &test.PathManager{
+		FindPathConfImpl: func(req defs.PathFindPathConfReq) (*conf.Path, error) {
 			require.Equal(t, "teststream", req.AccessRequest.Name)
+			require.Equal(t, "param=value", req.AccessRequest.Query)
+			require.Equal(t, "myuser", req.AccessRequest.User)
+			require.Equal(t, "mypass", req.AccessRequest.Pass)
 			return &conf.Path{}, nil
 		},
-		addPublisher: func(req defs.PathAddPublisherReq) (defs.Path, error) {
+		AddPublisherImpl: func(req defs.PathAddPublisherReq) (defs.Path, error) {
 			require.Equal(t, "teststream", req.AccessRequest.Name)
+			require.Equal(t, "param=value", req.AccessRequest.Query)
+			require.Equal(t, "myuser", req.AccessRequest.User)
+			require.Equal(t, "mypass", req.AccessRequest.Pass)
 			return path, nil
 		},
 	}
@@ -260,15 +251,16 @@ func TestServerPublish(t *testing.T) {
 		ServerCert:            "",
 		AllowOrigin:           "",
 		TrustedProxies:        conf.IPNetworks{},
-		ReadTimeout:           conf.StringDuration(10 * time.Second),
+		ReadTimeout:           conf.Duration(10 * time.Second),
 		LocalUDPAddress:       "127.0.0.1:8887",
 		LocalTCPAddress:       "127.0.0.1:8887",
 		IPsFromInterfaces:     true,
 		IPsFromInterfacesList: []string{},
 		AdditionalHosts:       []string{},
 		ICEServers:            []conf.WebRTCICEServer{},
-		HandshakeTimeout:      conf.StringDuration(10 * time.Second),
-		TrackGatherTimeout:    conf.StringDuration(2 * time.Second),
+		HandshakeTimeout:      conf.Duration(10 * time.Second),
+		TrackGatherTimeout:    conf.Duration(2 * time.Second),
+		STUNGatherTimeout:     conf.Duration(5 * time.Second),
 		ExternalCmdPool:       nil,
 		PathManager:           pathManager,
 		Parent:                test.NilLogger,
@@ -284,12 +276,6 @@ func TestServerPublish(t *testing.T) {
 	su, err := url.Parse("http://myuser:mypass@localhost:8886/teststream/whip?param=value")
 	require.NoError(t, err)
 
-	wc := &whip.Client{
-		HTTPClient: hc,
-		URL:        su,
-		Log:        test.NilLogger,
-	}
-
 	track := &webrtc.OutgoingTrack{
 		Caps: pwebrtc.RTPCodecCapability{
 			MimeType:    pwebrtc.MimeTypeH264,
@@ -298,7 +284,15 @@ func TestServerPublish(t *testing.T) {
 		},
 	}
 
-	err = wc.Publish(context.Background(), []*webrtc.OutgoingTrack{track})
+	wc := &whip.Client{
+		HTTPClient:     hc,
+		URL:            su,
+		Publish:        true,
+		OutgoingTracks: []*webrtc.OutgoingTrack{track},
+		Log:            test.NilLogger,
+	}
+
+	err = wc.Initialize(context.Background())
 	require.NoError(t, err)
 	defer checkClose(t, wc.Close)
 
@@ -323,8 +317,8 @@ func TestServerPublish(t *testing.T) {
 
 	path.stream.AddReader(
 		reader,
-		path.stream.Desc().Medias[0],
-		path.stream.Desc().Medias[0].Formats[0],
+		path.stream.Desc.Medias[0],
+		path.stream.Desc.Medias[0].Formats[0],
 		func(u unit.Unit) error {
 			select {
 			case <-recv:
@@ -377,7 +371,7 @@ func TestServerRead(t *testing.T) {
 			&unit.AV1{
 				TU: [][]byte{{1, 2}},
 			},
-			[]byte{0, 2, 1, 2},
+			[]byte{0x10, 0x01, 0x02},
 		},
 		{
 			"vp9",
@@ -512,25 +506,32 @@ func TestServerRead(t *testing.T) {
 		t.Run(ca.name, func(t *testing.T) {
 			desc := &description.Session{Medias: ca.medias}
 
-			str, err := stream.New(
-				512,
-				1460,
-				desc,
-				reflect.TypeOf(ca.unit) != reflect.TypeOf(&unit.Generic{}),
-				test.NilLogger,
-			)
+			strm := &stream.Stream{
+				WriteQueueSize:     512,
+				UDPMaxPayloadSize:  1472,
+				Desc:               desc,
+				GenerateRTPPackets: reflect.TypeOf(ca.unit) != reflect.TypeOf(&unit.Generic{}),
+				Parent:             test.NilLogger,
+			}
+			err := strm.Initialize()
 			require.NoError(t, err)
 
-			path := &dummyPath{stream: str}
+			path := &dummyPath{stream: strm}
 
-			pathManager := &dummyPathManager{
-				findPathConf: func(req defs.PathFindPathConfReq) (*conf.Path, error) {
+			pathManager := &test.PathManager{
+				FindPathConfImpl: func(req defs.PathFindPathConfReq) (*conf.Path, error) {
 					require.Equal(t, "teststream", req.AccessRequest.Name)
+					require.Equal(t, "param=value", req.AccessRequest.Query)
+					require.Equal(t, "myuser", req.AccessRequest.User)
+					require.Equal(t, "mypass", req.AccessRequest.Pass)
 					return &conf.Path{}, nil
 				},
-				addReader: func(req defs.PathAddReaderReq) (defs.Path, *stream.Stream, error) {
+				AddReaderImpl: func(req defs.PathAddReaderReq) (defs.Path, *stream.Stream, error) {
 					require.Equal(t, "teststream", req.AccessRequest.Name)
-					return path, str, nil
+					require.Equal(t, "param=value", req.AccessRequest.Query)
+					require.Equal(t, "myuser", req.AccessRequest.User)
+					require.Equal(t, "mypass", req.AccessRequest.Pass)
+					return path, strm, nil
 				},
 			}
 
@@ -541,15 +542,16 @@ func TestServerRead(t *testing.T) {
 				ServerCert:            "",
 				AllowOrigin:           "",
 				TrustedProxies:        conf.IPNetworks{},
-				ReadTimeout:           conf.StringDuration(10 * time.Second),
+				ReadTimeout:           conf.Duration(10 * time.Second),
 				LocalUDPAddress:       "127.0.0.1:8887",
 				LocalTCPAddress:       "127.0.0.1:8887",
 				IPsFromInterfaces:     true,
 				IPsFromInterfacesList: []string{},
 				AdditionalHosts:       []string{},
 				ICEServers:            []conf.WebRTCICEServer{},
-				HandshakeTimeout:      conf.StringDuration(10 * time.Second),
-				TrackGatherTimeout:    conf.StringDuration(2 * time.Second),
+				HandshakeTimeout:      conf.Duration(10 * time.Second),
+				TrackGatherTimeout:    conf.Duration(2 * time.Second),
+				STUNGatherTimeout:     conf.Duration(5 * time.Second),
 				ExternalCmdPool:       nil,
 				PathManager:           pathManager,
 				Parent:                test.NilLogger,
@@ -576,26 +578,26 @@ func TestServerRead(t *testing.T) {
 			go func() {
 				defer close(writerDone)
 
-				str.WaitRunningReader()
+				strm.WaitRunningReader()
 
 				r := reflect.New(reflect.TypeOf(ca.unit).Elem())
 				r.Elem().Set(reflect.ValueOf(ca.unit).Elem())
 
 				if g, ok := r.Interface().(*unit.Generic); ok {
 					clone := *g.RTPPackets[0]
-					str.WriteRTPPacket(desc.Medias[0], desc.Medias[0].Formats[0], &clone, time.Time{}, 0)
+					strm.WriteRTPPacket(desc.Medias[0], desc.Medias[0].Formats[0], &clone, time.Time{}, 0)
 				} else {
-					str.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], r.Interface().(unit.Unit))
+					strm.WriteUnit(desc.Medias[0], desc.Medias[0].Formats[0], r.Interface().(unit.Unit))
 				}
 			}()
 
-			tracks, err := wc.Read(context.Background())
+			err = wc.Initialize(context.Background())
 			require.NoError(t, err)
 			defer checkClose(t, wc.Close)
 
 			done := make(chan struct{})
 
-			tracks[0].OnPacketRTP = func(pkt *rtp.Packet) {
+			wc.IncomingTracks()[0].OnPacketRTP = func(pkt *rtp.Packet, _ time.Time) {
 				select {
 				case <-done:
 				default:
@@ -613,12 +615,12 @@ func TestServerRead(t *testing.T) {
 }
 
 func TestServerReadNotFound(t *testing.T) {
-	pm := &dummyPathManager{
-		findPathConf: func(_ defs.PathFindPathConfReq) (*conf.Path, error) {
+	pm := &test.PathManager{
+		FindPathConfImpl: func(_ defs.PathFindPathConfReq) (*conf.Path, error) {
 			return &conf.Path{}, nil
 		},
-		addReader: func(_ defs.PathAddReaderReq) (defs.Path, *stream.Stream, error) {
-			return nil, nil, defs.PathNoOnePublishingError{}
+		AddReaderImpl: func(_ defs.PathAddReaderReq) (defs.Path, *stream.Stream, error) {
+			return nil, nil, defs.PathNoStreamAvailableError{}
 		},
 	}
 
@@ -629,15 +631,16 @@ func TestServerReadNotFound(t *testing.T) {
 		ServerCert:            "",
 		AllowOrigin:           "",
 		TrustedProxies:        conf.IPNetworks{},
-		ReadTimeout:           conf.StringDuration(10 * time.Second),
+		ReadTimeout:           conf.Duration(10 * time.Second),
 		LocalUDPAddress:       "127.0.0.1:8887",
 		LocalTCPAddress:       "127.0.0.1:8887",
 		IPsFromInterfaces:     true,
 		IPsFromInterfacesList: []string{},
 		AdditionalHosts:       []string{},
 		ICEServers:            []conf.WebRTCICEServer{},
-		HandshakeTimeout:      conf.StringDuration(10 * time.Second),
-		TrackGatherTimeout:    conf.StringDuration(2 * time.Second),
+		HandshakeTimeout:      conf.Duration(10 * time.Second),
+		TrackGatherTimeout:    conf.Duration(2 * time.Second),
+		STUNGatherTimeout:     conf.Duration(5 * time.Second),
 		ExternalCmdPool:       nil,
 		PathManager:           pm,
 		Parent:                test.NilLogger,

@@ -1,5 +1,4 @@
 //go:build !linux || (!arm && !arm64)
-// +build !linux !arm,!arm64
 
 package rpicamera
 
@@ -9,8 +8,9 @@ import (
 )
 
 type camera struct {
-	Params params
-	OnData func(time.Duration, [][]byte)
+	params          params
+	onData          func(int64, time.Time, [][]byte)
+	onDataSecondary func(int64, time.Time, []byte)
 }
 
 func (c *camera) initialize() error {
@@ -21,4 +21,8 @@ func (c *camera) close() {
 }
 
 func (c *camera) reloadParams(_ params) {
+}
+
+func (c *camera) wait() error {
+	return nil
 }

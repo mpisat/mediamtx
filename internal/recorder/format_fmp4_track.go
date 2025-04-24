@@ -1,7 +1,7 @@
 package recorder
 
 import (
-	"github.com/bluenviron/mediacommon/pkg/formats/fmp4"
+	"github.com/bluenviron/mediacommon/v2/pkg/formats/fmp4"
 )
 
 type formatFMP4Track struct {
@@ -46,7 +46,7 @@ func (t *formatFMP4Track) write(sample *sample) error {
 
 	if (!t.f.hasVideo || t.initTrack.Codec.IsVideo()) &&
 		!t.nextSample.IsNonSyncSample &&
-		(nextDTSDuration-t.f.currentSegment.startDTS) >= t.f.ai.agent.SegmentDuration {
+		(nextDTSDuration-t.f.currentSegment.startDTS) >= t.f.ri.rec.SegmentDuration {
 		t.f.currentSegment.lastDTS = nextDTSDuration
 		err := t.f.currentSegment.close()
 		if err != nil {

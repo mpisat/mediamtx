@@ -4,18 +4,20 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/bluenviron/gortsplib/v4/pkg/format"
 	"github.com/bluenviron/gortsplib/v4/pkg/format/rtpav1"
 	"github.com/bluenviron/gortsplib/v4/pkg/format/rtph264"
+	"github.com/bluenviron/gortsplib/v4/pkg/format/rtph265"
 	"github.com/bluenviron/gortsplib/v4/pkg/format/rtplpcm"
 	"github.com/bluenviron/gortsplib/v4/pkg/format/rtpvp8"
 	"github.com/bluenviron/gortsplib/v4/pkg/format/rtpvp9"
-	"github.com/bluenviron/mediacommon/pkg/codecs/g711"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/g711"
 	"github.com/bluenviron/mediamtx/internal/logger"
 	"github.com/bluenviron/mediamtx/internal/stream"
 	"github.com/bluenviron/mediamtx/internal/unit"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 const (
@@ -23,7 +25,8 @@ const (
 )
 
 var errNoSupportedCodecsFrom = errors.New(
-	"the stream doesn't contain any supported codec, which are currently AV1, VP9, VP8, H264, Opus, G722, G711, LPCM")
+	"the stream doesn't contain any supported codec, which are currently " +
+		"AV1, VP9, VP8, H265, H264, Opus, G722, G711, LPCM")
 
 func uint16Ptr(v uint16) *uint16 {
 	return &v
@@ -38,15 +41,25 @@ func randUint32() (uint32, error) {
 	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3]), nil
 }
 
+func multiplyAndDivide2(v, m, d time.Duration) time.Duration {
+	secs := v / d
+	dec := v % d
+	return (secs*m + dec*m/d)
+}
+
+func timestampToDuration(t int64, clockRate int) time.Duration {
+	return multiplyAndDivide2(time.Duration(t), time.Second, time.Duration(clockRate))
+}
+
 func setupVideoTrack(
 	stream *stream.Stream,
 	reader stream.Reader,
 	pc *PeerConnection,
 ) (format.Format, error) {
 	var av1Format *format.AV1
-	media := stream.Desc().FindFormat(&av1Format)
+	media := stream.Desc.FindFormat(&av1Format)
 
-	if av1Format != nil {
+	if av1Format != nil { //nolint:dupl
 		track := &OutgoingTrack{
 			Caps: webrtc.RTPCodecCapability{
 				MimeType:  webrtc.MimeTypeAV1,
@@ -81,8 +94,9 @@ func setupVideoTrack(
 				}
 
 				for _, pkt := range packets {
+					ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp), 90000))
 					pkt.Timestamp += tunit.RTPPackets[0].Timestamp
-					track.WriteRTP(pkt) //nolint:errcheck
+					track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
 				}
 
 				return nil
@@ -92,7 +106,7 @@ func setupVideoTrack(
 	}
 
 	var vp9Format *format.VP9
-	media = stream.Desc().FindFormat(&vp9Format)
+	media = stream.Desc.FindFormat(&vp9Format)
 
 	if vp9Format != nil {
 		track := &OutgoingTrack{
@@ -131,8 +145,9 @@ func setupVideoTrack(
 				}
 
 				for _, pkt := range packets {
+					ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp), 90000))
 					pkt.Timestamp += tunit.RTPPackets[0].Timestamp
-					track.WriteRTP(pkt) //nolint:errcheck
+					track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
 				}
 
 				return nil
@@ -142,9 +157,9 @@ func setupVideoTrack(
 	}
 
 	var vp8Format *format.VP8
-	media = stream.Desc().FindFormat(&vp8Format)
+	media = stream.Desc.FindFormat(&vp8Format)
 
-	if vp8Format != nil {
+	if vp8Format != nil { //nolint:dupl
 		track := &OutgoingTrack{
 			Caps: webrtc.RTPCodecCapability{
 				MimeType:  webrtc.MimeTypeVP8,
@@ -179,8 +194,9 @@ func setupVideoTrack(
 				}
 
 				for _, pkt := range packets {
+					ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp), 90000))
 					pkt.Timestamp += tunit.RTPPackets[0].Timestamp
-					track.WriteRTP(pkt) //nolint:errcheck
+					track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
 				}
 
 				return nil
@@ -189,10 +205,70 @@ func setupVideoTrack(
 		return vp8Format, nil
 	}
 
-	var h264Format *format.H264
-	media = stream.Desc().FindFormat(&h264Format)
+	var h265Format *format.H265
+	media = stream.Desc.FindFormat(&h265Format)
 
-	if h264Format != nil {
+	if h265Format != nil { //nolint:dupl
+		track := &OutgoingTrack{
+			Caps: webrtc.RTPCodecCapability{
+				MimeType:    webrtc.MimeTypeH265,
+				ClockRate:   90000,
+				SDPFmtpLine: "level-id=93;profile-id=1;tier-flag=0;tx-mode=SRST",
+			},
+		}
+		pc.OutgoingTracks = append(pc.OutgoingTracks, track)
+
+		encoder := &rtph265.Encoder{
+			PayloadType:    96,
+			PayloadMaxSize: webrtcPayloadMaxSize,
+		}
+		err := encoder.Init()
+		if err != nil {
+			return nil, err
+		}
+
+		firstReceived := false
+		var lastPTS int64
+
+		stream.AddReader(
+			reader,
+			media,
+			h265Format,
+			func(u unit.Unit) error {
+				tunit := u.(*unit.H265)
+
+				if tunit.AU == nil {
+					return nil
+				}
+
+				if !firstReceived {
+					firstReceived = true
+				} else if tunit.PTS < lastPTS {
+					return fmt.Errorf("WebRTC doesn't support H265 streams with B-frames")
+				}
+				lastPTS = tunit.PTS
+
+				packets, err := encoder.Encode(tunit.AU)
+				if err != nil {
+					return nil //nolint:nilerr
+				}
+
+				for _, pkt := range packets {
+					ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp), 90000))
+					pkt.Timestamp += tunit.RTPPackets[0].Timestamp
+					track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
+				}
+
+				return nil
+			})
+
+		return h265Format, nil
+	}
+
+	var h264Format *format.H264
+	media = stream.Desc.FindFormat(&h264Format)
+
+	if h264Format != nil { //nolint:dupl
 		track := &OutgoingTrack{
 			Caps: webrtc.RTPCodecCapability{
 				MimeType:    webrtc.MimeTypeH264,
@@ -238,8 +314,9 @@ func setupVideoTrack(
 				}
 
 				for _, pkt := range packets {
+					ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp), 90000))
 					pkt.Timestamp += tunit.RTPPackets[0].Timestamp
-					track.WriteRTP(pkt) //nolint:errcheck
+					track.WriteRTPWithNTP(pkt, ntp.Add(-1*time.Minute)) //nolint:errcheck
 				}
 
 				return nil
@@ -257,7 +334,7 @@ func setupAudioTrack(
 	pc *PeerConnection,
 ) (format.Format, error) {
 	var opusFormat *format.Opus
-	media := stream.Desc().FindFormat(&opusFormat)
+	media := stream.Desc.FindFormat(&opusFormat)
 
 	if opusFormat != nil {
 		var caps webrtc.RTPCodecCapability
@@ -300,7 +377,8 @@ func setupAudioTrack(
 			opusFormat,
 			func(u unit.Unit) error {
 				for _, pkt := range u.GetRTPPackets() {
-					track.WriteRTP(pkt) //nolint:errcheck
+					ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp-u.GetRTPPackets()[0].Timestamp), 48000))
+					track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
 				}
 
 				return nil
@@ -310,7 +388,7 @@ func setupAudioTrack(
 	}
 
 	var g722Format *format.G722
-	media = stream.Desc().FindFormat(&g722Format)
+	media = stream.Desc.FindFormat(&g722Format)
 
 	if g722Format != nil {
 		track := &OutgoingTrack{
@@ -327,7 +405,8 @@ func setupAudioTrack(
 			g722Format,
 			func(u unit.Unit) error {
 				for _, pkt := range u.GetRTPPackets() {
-					track.WriteRTP(pkt) //nolint:errcheck
+					ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp-u.GetRTPPackets()[0].Timestamp), 8000))
+					track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
 				}
 
 				return nil
@@ -337,7 +416,7 @@ func setupAudioTrack(
 	}
 
 	var g711Format *format.G711
-	media = stream.Desc().FindFormat(&g711Format)
+	media = stream.Desc.FindFormat(&g711Format)
 
 	if g711Format != nil {
 		// These are the sample rates and channels supported by Chrome.
@@ -353,12 +432,12 @@ func setupAudioTrack(
 
 		var caps webrtc.RTPCodecCapability
 
-		if g711Format.SampleRate == 8000 {
+		if g711Format.ClockRate() == 8000 {
 			if g711Format.MULaw {
 				if g711Format.ChannelCount != 1 {
 					caps = webrtc.RTPCodecCapability{
 						MimeType:  webrtc.MimeTypePCMU,
-						ClockRate: uint32(g711Format.SampleRate),
+						ClockRate: uint32(g711Format.ClockRate()),
 						Channels:  uint16(g711Format.ChannelCount),
 					}
 				} else {
@@ -371,7 +450,7 @@ func setupAudioTrack(
 				if g711Format.ChannelCount != 1 {
 					caps = webrtc.RTPCodecCapability{
 						MimeType:  webrtc.MimeTypePCMA,
-						ClockRate: uint32(g711Format.SampleRate),
+						ClockRate: uint32(g711Format.ClockRate()),
 						Channels:  uint16(g711Format.ChannelCount),
 					}
 				} else {
@@ -394,7 +473,7 @@ func setupAudioTrack(
 		}
 		pc.OutgoingTracks = append(pc.OutgoingTracks, track)
 
-		if g711Format.SampleRate == 8000 {
+		if g711Format.ClockRate() == 8000 {
 			curTimestamp, err := randUint32()
 			if err != nil {
 				return nil, err
@@ -411,7 +490,8 @@ func setupAudioTrack(
 						pkt.Timestamp = curTimestamp
 						curTimestamp += uint32(len(pkt.Payload)) / uint32(g711Format.ChannelCount)
 
-						track.WriteRTP(pkt) //nolint:errcheck
+						ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp-u.GetRTPPackets()[0].Timestamp), 8000))
+						track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
 					}
 
 					return nil
@@ -444,14 +524,18 @@ func setupAudioTrack(
 						return nil
 					}
 
-					var lpcmSamples []byte
+					var lpcm []byte
 					if g711Format.MULaw {
-						lpcmSamples = g711.DecodeMulaw(tunit.Samples)
+						var mu g711.Mulaw
+						mu.Unmarshal(tunit.Samples)
+						lpcm = mu
 					} else {
-						lpcmSamples = g711.DecodeAlaw(tunit.Samples)
+						var al g711.Alaw
+						al.Unmarshal(tunit.Samples)
+						lpcm = al
 					}
 
-					packets, err := encoder.Encode(lpcmSamples)
+					packets, err := encoder.Encode(lpcm)
 					if err != nil {
 						return nil //nolint:nilerr
 					}
@@ -462,7 +546,9 @@ func setupAudioTrack(
 						pkt.Timestamp = curTimestamp
 						curTimestamp += uint32(len(pkt.Payload)) / 2 / uint32(g711Format.ChannelCount)
 
-						track.WriteRTP(pkt) //nolint:errcheck
+						ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp-u.GetRTPPackets()[0].Timestamp),
+							g711Format.ClockRate()))
+						track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
 					}
 
 					return nil
@@ -473,7 +559,7 @@ func setupAudioTrack(
 	}
 
 	var lpcmFormat *format.LPCM
-	media = stream.Desc().FindFormat(&lpcmFormat)
+	media = stream.Desc.FindFormat(&lpcmFormat)
 
 	if lpcmFormat != nil {
 		if lpcmFormat.BitDepth != 16 {
@@ -538,7 +624,9 @@ func setupAudioTrack(
 					pkt.Timestamp = curTimestamp
 					curTimestamp += uint32(len(pkt.Payload)) / 2 / uint32(lpcmFormat.ChannelCount)
 
-					track.WriteRTP(pkt) //nolint:errcheck
+					ntp := u.GetNTP().Add(timestampToDuration(int64(pkt.Timestamp-u.GetRTPPackets()[0].Timestamp),
+						lpcmFormat.ClockRate()))
+					track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
 				}
 
 				return nil
@@ -571,7 +659,7 @@ func FromStream(
 	}
 
 	n := 1
-	for _, media := range stream.Desc().Medias {
+	for _, media := range stream.Desc.Medias {
 		for _, forma := range media.Formats {
 			if forma != videoFormat && forma != audioFormat {
 				reader.Log(logger.Warn, "skipping track %d (%s)", n, forma.Codec())

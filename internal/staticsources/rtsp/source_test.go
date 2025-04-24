@@ -55,7 +55,7 @@ func TestSource(t *testing.T) {
 				Handler: &testServer{
 					onDescribe: func(ctx *gortsplib.ServerHandlerOnDescribeCtx,
 					) (*base.Response, *gortsplib.ServerStream, error) {
-						err2 := auth.Validate(ctx.Request, "testuser", "testpass", nil, "IPCAM", nonce)
+						err2 := auth.Verify(ctx.Request, "testuser", "testpass", nil, "IPCAM", nonce)
 						if err2 != nil {
 							return &base.Response{ //nolint:nilerr
 								StatusCode: base.StatusUnauthorized,
@@ -126,7 +126,12 @@ func TestSource(t *testing.T) {
 			require.NoError(t, err)
 			defer s.Close()
 
-			stream = gortsplib.NewServerStream(&s, &description.Session{Medias: []*description.Media{media0}})
+			stream = &gortsplib.ServerStream{
+				Server: &s,
+				Desc:   &description.Session{Medias: []*description.Media{media0}},
+			}
+			err = stream.Initialize()
+			require.NoError(t, err)
 			defer stream.Close()
 
 			var te *test.SourceTester
@@ -138,8 +143,8 @@ func TestSource(t *testing.T) {
 				te = test.NewSourceTester(
 					func(p defs.StaticSourceParent) defs.StaticSource {
 						return &Source{
-							ReadTimeout:    conf.StringDuration(10 * time.Second),
-							WriteTimeout:   conf.StringDuration(10 * time.Second),
+							ReadTimeout:    conf.Duration(10 * time.Second),
+							WriteTimeout:   conf.Duration(10 * time.Second),
 							WriteQueueSize: 2048,
 							Parent:         p,
 						}
@@ -153,8 +158,8 @@ func TestSource(t *testing.T) {
 				te = test.NewSourceTester(
 					func(p defs.StaticSourceParent) defs.StaticSource {
 						return &Source{
-							ReadTimeout:    conf.StringDuration(10 * time.Second),
-							WriteTimeout:   conf.StringDuration(10 * time.Second),
+							ReadTimeout:    conf.Duration(10 * time.Second),
+							WriteTimeout:   conf.Duration(10 * time.Second),
 							WriteQueueSize: 2048,
 							Parent:         p,
 						}
@@ -173,7 +178,7 @@ func TestSource(t *testing.T) {
 	}
 }
 
-func TestRTSPSourceNoPassword(t *testing.T) {
+func TestSourceNoPassword(t *testing.T) {
 	var stream *gortsplib.ServerStream
 
 	nonce, err := auth.GenerateNonce()
@@ -184,7 +189,7 @@ func TestRTSPSourceNoPassword(t *testing.T) {
 	s := gortsplib.Server{
 		Handler: &testServer{
 			onDescribe: func(ctx *gortsplib.ServerHandlerOnDescribeCtx) (*base.Response, *gortsplib.ServerStream, error) {
-				err2 := auth.Validate(ctx.Request, "testuser", "", nil, "IPCAM", nonce)
+				err2 := auth.Verify(ctx.Request, "testuser", "", nil, "IPCAM", nonce)
 				if err2 != nil {
 					return &base.Response{ //nolint:nilerr
 						StatusCode: base.StatusUnauthorized,
@@ -232,7 +237,12 @@ func TestRTSPSourceNoPassword(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	stream = gortsplib.NewServerStream(&s, &description.Session{Medias: []*description.Media{media0}})
+	stream = &gortsplib.ServerStream{
+		Server: &s,
+		Desc:   &description.Session{Medias: []*description.Media{media0}},
+	}
+	err = stream.Initialize()
+	require.NoError(t, err)
 	defer stream.Close()
 
 	var sp conf.RTSPTransport
@@ -241,8 +251,8 @@ func TestRTSPSourceNoPassword(t *testing.T) {
 	te := test.NewSourceTester(
 		func(p defs.StaticSourceParent) defs.StaticSource {
 			return &Source{
-				ReadTimeout:    conf.StringDuration(10 * time.Second),
-				WriteTimeout:   conf.StringDuration(10 * time.Second),
+				ReadTimeout:    conf.Duration(10 * time.Second),
+				WriteTimeout:   conf.Duration(10 * time.Second),
 				WriteQueueSize: 2048,
 				Parent:         p,
 			}
@@ -257,7 +267,7 @@ func TestRTSPSourceNoPassword(t *testing.T) {
 	<-te.Unit
 }
 
-func TestRTSPSourceRange(t *testing.T) {
+func TestSourceRange(t *testing.T) {
 	for _, ca := range []string{"clock", "npt", "smpte"} {
 		t.Run(ca, func(t *testing.T) {
 			var stream *gortsplib.ServerStream
@@ -316,7 +326,12 @@ func TestRTSPSourceRange(t *testing.T) {
 			require.NoError(t, err)
 			defer s.Close()
 
-			stream = gortsplib.NewServerStream(&s, &description.Session{Medias: []*description.Media{media0}})
+			stream = &gortsplib.ServerStream{
+				Server: &s,
+				Desc:   &description.Session{Medias: []*description.Media{media0}},
+			}
+			err = stream.Initialize()
+			require.NoError(t, err)
 			defer stream.Close()
 
 			cnf := &conf.Path{}
@@ -338,8 +353,8 @@ func TestRTSPSourceRange(t *testing.T) {
 			te := test.NewSourceTester(
 				func(p defs.StaticSourceParent) defs.StaticSource {
 					return &Source{
-						ReadTimeout:    conf.StringDuration(10 * time.Second),
-						WriteTimeout:   conf.StringDuration(10 * time.Second),
+						ReadTimeout:    conf.Duration(10 * time.Second),
+						WriteTimeout:   conf.Duration(10 * time.Second),
 						WriteQueueSize: 2048,
 						Parent:         p,
 					}

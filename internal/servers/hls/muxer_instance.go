@@ -53,8 +53,8 @@ func (r *playlistResponse) WriteHeader(statusCode int) {
 type muxerInstance struct {
 	variant         conf.HLSVariant
 	segmentCount    int
-	segmentDuration conf.StringDuration
-	partDuration    conf.StringDuration
+	segmentDuration conf.Duration
+	partDuration    conf.Duration
 	segmentMaxSize  conf.StringSize
 	directory       string
 	pathName        string

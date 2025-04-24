@@ -39,7 +39,7 @@ func TestCleaner(t *testing.T) {
 				Regexp:            regexp.MustCompile("^.*$"),
 				RecordPath:        filepath.Join(dir, specialChars+"_%path/%Y-%m-%d_%H-%M-%S-%f"),
 				RecordFormat:      conf.RecordFormatFMP4,
-				RecordDeleteAfter: conf.StringDuration(10 * time.Second),
+				RecordDeleteAfter: conf.Duration(10 * time.Second),
 			},
 		},
 		Parent: test.NilLogger,
@@ -83,13 +83,13 @@ func TestCleanerMultipleEntriesSamePath(t *testing.T) {
 				Name:              "path1",
 				RecordPath:        filepath.Join(dir, "%path/%Y-%m-%d_%H-%M-%S-%f"),
 				RecordFormat:      conf.RecordFormatFMP4,
-				RecordDeleteAfter: conf.StringDuration(10 * time.Second),
+				RecordDeleteAfter: conf.Duration(10 * time.Second),
 			},
 			"path2": {
 				Name:              "path2",
 				RecordPath:        filepath.Join(dir, "%path/%Y-%m-%d_%H-%M-%S-%f"),
 				RecordFormat:      conf.RecordFormatFMP4,
-				RecordDeleteAfter: conf.StringDuration(10 * 24 * time.Hour),
+				RecordDeleteAfter: conf.Duration(10 * 24 * time.Hour),
 			},
 		},
 		Parent: test.NilLogger,
@@ -101,6 +101,9 @@ func TestCleanerMultipleEntriesSamePath(t *testing.T) {
 
 	_, err = os.Stat(filepath.Join(dir, "path1", "2009-05-19_22-15-25-000427.mp4"))
 	require.Error(t, err)
+
+	_, err = os.Stat(filepath.Join(dir, "path1"))
+	require.Error(t, err, "testing")
 
 	_, err = os.Stat(filepath.Join(dir, "path2", "2009-05-19_22-15-25-000427.mp4"))
 	require.NoError(t, err)

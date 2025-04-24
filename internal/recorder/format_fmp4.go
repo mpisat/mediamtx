@@ -6,18 +6,18 @@ import (
 	"time"
 
 	rtspformat "github.com/bluenviron/gortsplib/v4/pkg/format"
-	"github.com/bluenviron/mediacommon/pkg/codecs/ac3"
-	"github.com/bluenviron/mediacommon/pkg/codecs/av1"
-	"github.com/bluenviron/mediacommon/pkg/codecs/g711"
-	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
-	"github.com/bluenviron/mediacommon/pkg/codecs/h265"
-	"github.com/bluenviron/mediacommon/pkg/codecs/jpeg"
-	"github.com/bluenviron/mediacommon/pkg/codecs/mpeg1audio"
-	"github.com/bluenviron/mediacommon/pkg/codecs/mpeg4audio"
-	"github.com/bluenviron/mediacommon/pkg/codecs/mpeg4video"
-	"github.com/bluenviron/mediacommon/pkg/codecs/opus"
-	"github.com/bluenviron/mediacommon/pkg/codecs/vp9"
-	"github.com/bluenviron/mediacommon/pkg/formats/fmp4"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/ac3"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/av1"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/g711"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/h264"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/h265"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/jpeg"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/mpeg1audio"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/mpeg4audio"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/mpeg4video"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/opus"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/vp9"
+	"github.com/bluenviron/mediacommon/v2/pkg/formats/fmp4"
 
 	"github.com/bluenviron/mediamtx/internal/defs"
 	"github.com/bluenviron/mediamtx/internal/formatprocessor"
@@ -93,7 +93,7 @@ func jpegExtractSize(image []byte) (int, int, error) {
 }
 
 type formatFMP4 struct {
-	ai *recorderInstance
+	ri *recorderInstance
 
 	tracks             []*formatFMP4Track
 	hasVideo           bool
@@ -101,7 +101,7 @@ type formatFMP4 struct {
 	nextSequenceNumber uint32
 }
 
-func (f *formatFMP4) initialize() {
+func (f *formatFMP4) initialize() bool {
 	nextID := 1
 	var setuppedFormats []rtspformat.Format
 	setuppedFormatsMap := make(map[rtspformat.Format]struct{})
@@ -135,7 +135,7 @@ func (f *formatFMP4) initialize() {
 		}
 	}
 
-	for _, media := range f.ai.agent.Stream.Desc().Medias {
+	for _, media := range f.ri.rec.Stream.Desc.Medias {
 		for _, forma := range media.Formats {
 			clockRate := forma.ClockRate()
 
@@ -148,8 +148,8 @@ func (f *formatFMP4) initialize() {
 
 				firstReceived := false
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -183,15 +183,14 @@ func (f *formatFMP4) initialize() {
 							firstReceived = true
 						}
 
-						sampl, err := fmp4.NewPartSampleAV1(
-							randomAccess,
-							tunit.TU)
+						var sampl fmp4.PartSample
+						err := sampl.FillAV1(tunit.TU)
 						if err != nil {
 							return err
 						}
 
 						return track.write(&sample{
-							PartSample: sampl,
+							PartSample: &sampl,
 							dts:        tunit.PTS,
 							ntp:        tunit.NTP,
 						})
@@ -210,8 +209,8 @@ func (f *formatFMP4) initialize() {
 
 				firstReceived := false
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -293,10 +292,10 @@ func (f *formatFMP4) initialize() {
 				}
 				track := addTrack(forma, codec)
 
-				var dtsExtractor *h265.DTSExtractor2
+				var dtsExtractor *h265.DTSExtractor
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -338,7 +337,8 @@ func (f *formatFMP4) initialize() {
 							if !randomAccess {
 								return nil
 							}
-							dtsExtractor = h265.NewDTSExtractor2()
+							dtsExtractor = &h265.DTSExtractor{}
+							dtsExtractor.Initialize()
 						}
 
 						dts, err := dtsExtractor.Extract(tunit.AU, tunit.PTS)
@@ -346,16 +346,16 @@ func (f *formatFMP4) initialize() {
 							return err
 						}
 
-						sampl, err := fmp4.NewPartSampleH26x(
+						var sampl fmp4.PartSample
+						err = sampl.FillH265(
 							int32(tunit.PTS-dts),
-							randomAccess,
 							tunit.AU)
 						if err != nil {
 							return err
 						}
 
 						return track.write(&sample{
-							PartSample: sampl,
+							PartSample: &sampl,
 							dts:        dts,
 							ntp:        tunit.NTP,
 						})
@@ -375,10 +375,10 @@ func (f *formatFMP4) initialize() {
 				}
 				track := addTrack(forma, codec)
 
-				var dtsExtractor *h264.DTSExtractor2
+				var dtsExtractor *h264.DTSExtractor
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -413,7 +413,8 @@ func (f *formatFMP4) initialize() {
 							if !randomAccess {
 								return nil
 							}
-							dtsExtractor = h264.NewDTSExtractor2()
+							dtsExtractor = &h264.DTSExtractor{}
+							dtsExtractor.Initialize()
 						}
 
 						dts, err := dtsExtractor.Extract(tunit.AU, tunit.PTS)
@@ -421,16 +422,16 @@ func (f *formatFMP4) initialize() {
 							return err
 						}
 
-						sampl, err := fmp4.NewPartSampleH26x(
+						var sampl fmp4.PartSample
+						err = sampl.FillH264(
 							int32(tunit.PTS-dts),
-							randomAccess,
 							tunit.AU)
 						if err != nil {
 							return err
 						}
 
 						return track.write(&sample{
-							PartSample: sampl,
+							PartSample: &sampl,
 							dts:        dts,
 							ntp:        tunit.NTP,
 						})
@@ -451,8 +452,8 @@ func (f *formatFMP4) initialize() {
 				firstReceived := false
 				var lastPTS int64
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -504,8 +505,8 @@ func (f *formatFMP4) initialize() {
 				firstReceived := false
 				var lastPTS int64
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -557,8 +558,8 @@ func (f *formatFMP4) initialize() {
 
 				parsed := false
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -593,8 +594,8 @@ func (f *formatFMP4) initialize() {
 				}
 				track := addTrack(forma, codec)
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -611,13 +612,13 @@ func (f *formatFMP4) initialize() {
 									Payload: packet,
 								},
 								dts: pts,
-								ntp: tunit.NTP.Add(timestampToDuration(pts, clockRate)),
+								ntp: tunit.NTP.Add(timestampToDuration(pts-tunit.PTS, clockRate)),
 							})
 							if err != nil {
 								return err
 							}
 
-							pts += int64(opus.PacketDuration(packet)) * int64(clockRate) / int64(time.Second)
+							pts += opus.PacketDuration2(packet)
 						}
 
 						return nil
@@ -631,8 +632,8 @@ func (f *formatFMP4) initialize() {
 					}
 					track := addTrack(forma, codec)
 
-					f.ai.agent.Stream.AddReader(
-						f.ai,
+					f.ri.rec.Stream.AddReader(
+						f.ri,
 						media,
 						forma,
 						func(u unit.Unit) error {
@@ -649,7 +650,7 @@ func (f *formatFMP4) initialize() {
 										Payload: au,
 									},
 									dts: pts,
-									ntp: tunit.NTP.Add(timestampToDuration(pts, clockRate)),
+									ntp: tunit.NTP.Add(timestampToDuration(pts-tunit.PTS, clockRate)),
 								})
 								if err != nil {
 									return err
@@ -669,8 +670,8 @@ func (f *formatFMP4) initialize() {
 
 				parsed := false
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -728,8 +729,8 @@ func (f *formatFMP4) initialize() {
 
 				parsed := false
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -771,7 +772,7 @@ func (f *formatFMP4) initialize() {
 									Payload: frame,
 								},
 								dts: pts,
-								ntp: tunit.NTP.Add(timestampToDuration(pts, clockRate)),
+								ntp: tunit.NTP.Add(timestampToDuration(pts-tunit.PTS, clockRate)),
 							})
 							if err != nil {
 								return err
@@ -793,26 +794,31 @@ func (f *formatFMP4) initialize() {
 				}
 				track := addTrack(forma, codec)
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
 						tunit := u.(*unit.G711)
+
 						if tunit.Samples == nil {
 							return nil
 						}
 
-						var out []byte
+						var lpcm []byte
 						if forma.MULaw {
-							out = g711.DecodeMulaw(tunit.Samples)
+							var mu g711.Mulaw
+							mu.Unmarshal(tunit.Samples)
+							lpcm = mu
 						} else {
-							out = g711.DecodeAlaw(tunit.Samples)
+							var al g711.Alaw
+							al.Unmarshal(tunit.Samples)
+							lpcm = al
 						}
 
 						return track.write(&sample{
 							PartSample: &fmp4.PartSample{
-								Payload: out,
+								Payload: lpcm,
 							},
 							dts: tunit.PTS,
 							ntp: tunit.NTP,
@@ -828,8 +834,8 @@ func (f *formatFMP4) initialize() {
 				}
 				track := addTrack(forma, codec)
 
-				f.ai.agent.Stream.AddReader(
-					f.ai,
+				f.ri.rec.Stream.AddReader(
+					f.ri,
 					media,
 					forma,
 					func(u unit.Unit) error {
@@ -851,22 +857,24 @@ func (f *formatFMP4) initialize() {
 	}
 
 	if len(setuppedFormats) == 0 {
-		f.ai.Log(logger.Warn, "no supported tracks found, skipping recording")
-		return
+		f.ri.Log(logger.Warn, "no supported tracks found, skipping recording")
+		return false
 	}
 
 	n := 1
-	for _, medi := range f.ai.agent.Stream.Desc().Medias {
+	for _, medi := range f.ri.rec.Stream.Desc.Medias {
 		for _, forma := range medi.Formats {
 			if _, ok := setuppedFormatsMap[forma]; !ok {
-				f.ai.Log(logger.Warn, "skipping track %d (%s)", n, forma.Codec())
+				f.ri.Log(logger.Warn, "skipping track %d (%s)", n, forma.Codec())
 			}
 			n++
 		}
 	}
 
-	f.ai.Log(logger.Info, "recording %s",
+	f.ri.Log(logger.Info, "recording %s",
 		defs.FormatsInfo(setuppedFormats))
+
+	return true
 }
 
 func (f *formatFMP4) close() {

@@ -13,43 +13,45 @@ import (
 )
 
 func TestFromStreamNoSupportedCodecs(t *testing.T) {
-	stream, err := stream.New(
-		512,
-		1460,
-		&description.Session{Medias: []*description.Media{{
+	strm := &stream.Stream{
+		WriteQueueSize:    512,
+		UDPMaxPayloadSize: 1472,
+		Desc: &description.Session{Medias: []*description.Media{{
 			Type:    description.MediaTypeVideo,
-			Formats: []format.Format{&format.H265{}},
+			Formats: []format.Format{&format.MJPEG{}},
 		}}},
-		true,
-		test.NilLogger,
-	)
+		GenerateRTPPackets: true,
+		Parent:             test.NilLogger,
+	}
+	err := strm.Initialize()
 	require.NoError(t, err)
 
 	l := test.Logger(func(logger.Level, string, ...interface{}) {
 		t.Error("should not happen")
 	})
 
-	err = FromStream(stream, l, nil)
+	err = FromStream(strm, l, nil)
 	require.Equal(t, errNoSupportedCodecsFrom, err)
 }
 
 func TestFromStreamSkipUnsupportedTracks(t *testing.T) {
-	stream, err := stream.New(
-		512,
-		1460,
-		&description.Session{Medias: []*description.Media{
+	strm := &stream.Stream{
+		WriteQueueSize:    512,
+		UDPMaxPayloadSize: 1472,
+		Desc: &description.Session{Medias: []*description.Media{
 			{
 				Type:    description.MediaTypeVideo,
 				Formats: []format.Format{&format.H264{}},
 			},
 			{
 				Type:    description.MediaTypeVideo,
-				Formats: []format.Format{&format.H265{}},
+				Formats: []format.Format{&format.MJPEG{}},
 			},
 		}},
-		true,
-		test.NilLogger,
-	)
+		GenerateRTPPackets: true,
+		Parent:             test.NilLogger,
+	}
+	err := strm.Initialize()
 	require.NoError(t, err)
 
 	n := 0
@@ -57,45 +59,43 @@ func TestFromStreamSkipUnsupportedTracks(t *testing.T) {
 	l := test.Logger(func(l logger.Level, format string, args ...interface{}) {
 		require.Equal(t, logger.Warn, l)
 		if n == 0 {
-			require.Equal(t, "skipping track 2 (H265)", fmt.Sprintf(format, args...))
+			require.Equal(t, "skipping track 2 (M-JPEG)", fmt.Sprintf(format, args...))
 		}
 		n++
 	})
 
 	pc := &PeerConnection{}
 
-	err = FromStream(stream, l, pc)
+	err = FromStream(strm, l, pc)
 	require.NoError(t, err)
-	defer stream.RemoveReader(l)
+	defer strm.RemoveReader(l)
 
 	require.Equal(t, 1, n)
 }
 
 func TestFromStream(t *testing.T) {
 	for _, ca := range toFromStreamCases {
-		if ca.in == nil {
-			continue
-		}
 		t.Run(ca.name, func(t *testing.T) {
-			stream, err := stream.New(
-				512,
-				1460,
-				&description.Session{
+			strm := &stream.Stream{
+				WriteQueueSize:    512,
+				UDPMaxPayloadSize: 1472,
+				Desc: &description.Session{
 					Medias: []*description.Media{{
 						Formats: []format.Format{ca.in},
 					}},
 				},
-				false,
-				test.NilLogger,
-			)
+				GenerateRTPPackets: false,
+				Parent:             test.NilLogger,
+			}
+			err := strm.Initialize()
 			require.NoError(t, err)
-			defer stream.Close()
+			defer strm.Close()
 
 			pc := &PeerConnection{}
 
-			err = FromStream(stream, nil, pc)
+			err = FromStream(strm, nil, pc)
 			require.NoError(t, err)
-			defer stream.RemoveReader(nil)
+			defer strm.RemoveReader(nil)
 
 			require.Equal(t, ca.webrtcCaps, pc.OutgoingTracks[0].Caps)
 		})

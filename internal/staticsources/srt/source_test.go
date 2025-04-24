@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluenviron/mediacommon/pkg/formats/mpegts"
+	"github.com/bluenviron/mediacommon/v2/pkg/formats/mpegts"
 	srt "github.com/datarhei/gosrt"
 	"github.com/stretchr/testify/require"
 
@@ -36,10 +36,11 @@ func TestSource(t *testing.T) {
 		}
 
 		bw := bufio.NewWriter(conn)
-		w := mpegts.NewWriter(bw, []*mpegts.Track{track})
+		w := &mpegts.Writer{W: bw, Tracks: []*mpegts.Track{track}}
+		err = w.Initialize()
 		require.NoError(t, err)
 
-		err = w.WriteH264(track, 0, 0, true, [][]byte{{ // IDR
+		err = w.WriteH264(track, 0, 0, [][]byte{{ // IDR
 			5, 1,
 		}})
 		require.NoError(t, err)
@@ -54,7 +55,7 @@ func TestSource(t *testing.T) {
 	te := test.NewSourceTester(
 		func(p defs.StaticSourceParent) defs.StaticSource {
 			return &Source{
-				ReadTimeout: conf.StringDuration(10 * time.Second),
+				ReadTimeout: conf.Duration(10 * time.Second),
 				Parent:      p,
 			}
 		},

@@ -15,10 +15,10 @@ import (
 
 	"github.com/bluenviron/gortsplib/v4"
 	"github.com/bluenviron/gortsplib/v4/pkg/description"
-	"github.com/bluenviron/mediacommon/pkg/formats/mpegts"
+	"github.com/bluenviron/mediacommon/v2/pkg/formats/mpegts"
 	srt "github.com/datarhei/gosrt"
 	"github.com/pion/rtp"
-	pwebrtc "github.com/pion/webrtc/v3"
+	pwebrtc "github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bluenviron/mediamtx/internal/protocols/rtmp"
@@ -56,9 +56,9 @@ func TestMetrics(t *testing.T) {
 		"metrics: yes\n" +
 		"webrtcServerCert: " + serverCertFpath + "\n" +
 		"webrtcServerKey: " + serverKeyFpath + "\n" +
-		"encryption: optional\n" +
-		"serverCert: " + serverCertFpath + "\n" +
-		"serverKey: " + serverKeyFpath + "\n" +
+		"rtspEncryption: optional\n" +
+		"rtspServerCert: " + serverCertFpath + "\n" +
+		"rtspServerKey: " + serverKeyFpath + "\n" +
 		"rtmpEncryption: optional\n" +
 		"rtmpServerCert: " + serverCertFpath + "\n" +
 		"rtmpServerKey: " + serverKeyFpath + "\n" +
@@ -83,12 +83,28 @@ rtsp_conns_bytes_sent 0
 rtsp_sessions 0
 rtsp_sessions_bytes_received 0
 rtsp_sessions_bytes_sent 0
+rtsp_sessions_rtp_packets_received 0
+rtsp_sessions_rtp_packets_sent 0
+rtsp_sessions_rtp_packets_lost 0
+rtsp_sessions_rtp_packets_in_error 0
+rtsp_sessions_rtp_packets_jitter 0
+rtsp_sessions_rtcp_packets_received 0
+rtsp_sessions_rtcp_packets_sent 0
+rtsp_sessions_rtcp_packets_in_error 0
 rtsps_conns 0
 rtsps_conns_bytes_received 0
 rtsps_conns_bytes_sent 0
 rtsps_sessions 0
 rtsps_sessions_bytes_received 0
 rtsps_sessions_bytes_sent 0
+rtsps_sessions_rtp_packets_received 0
+rtsps_sessions_rtp_packets_sent 0
+rtsps_sessions_rtp_packets_lost 0
+rtsps_sessions_rtp_packets_in_error 0
+rtsps_sessions_rtp_packets_jitter 0
+rtsps_sessions_rtcp_packets_received 0
+rtsps_sessions_rtcp_packets_sent 0
+rtsps_sessions_rtcp_packets_in_error 0
 rtmp_conns 0
 rtmp_conns_bytes_received 0
 rtmp_conns_bytes_sent 0
@@ -96,8 +112,57 @@ rtmps_conns 0
 rtmps_conns_bytes_received 0
 rtmps_conns_bytes_sent 0
 srt_conns 0
-srt_conns_bytes_received 0
+srt_conns_packets_sent 0
+srt_conns_packets_received 0
+srt_conns_packets_sent_unique 0
+srt_conns_packets_received_unique 0
+srt_conns_packets_send_loss 0
+srt_conns_packets_received_loss 0
+srt_conns_packets_retrans 0
+srt_conns_packets_received_retrans 0
+srt_conns_packets_sent_ack 0
+srt_conns_packets_received_ack 0
+srt_conns_packets_sent_nak 0
+srt_conns_packets_received_nak 0
+srt_conns_packets_sent_km 0
+srt_conns_packets_received_km 0
+srt_conns_us_snd_duration 0
+srt_conns_packets_send_drop 0
+srt_conns_packets_received_drop 0
+srt_conns_packets_received_undecrypt 0
 srt_conns_bytes_sent 0
+srt_conns_bytes_received 0
+srt_conns_bytes_sent_unique 0
+srt_conns_bytes_received_unique 0
+srt_conns_bytes_received_loss 0
+srt_conns_bytes_retrans 0
+srt_conns_bytes_received_retrans 0
+srt_conns_bytes_send_drop 0
+srt_conns_bytes_received_drop 0
+srt_conns_bytes_received_undecrypt 0
+srt_conns_us_packets_send_period 0
+srt_conns_packets_flow_window 0
+srt_conns_packets_flight_size 0
+srt_conns_ms_rtt 0
+srt_conns_mbps_send_rate 0
+srt_conns_mbps_receive_rate 0
+srt_conns_mbps_link_capacity 0
+srt_conns_bytes_avail_send_buf 0
+srt_conns_bytes_avail_receive_buf 0
+srt_conns_mbps_max_bw 0
+srt_conns_bytes_mss 0
+srt_conns_packets_send_buf 0
+srt_conns_bytes_send_buf 0
+srt_conns_ms_send_buf 0
+srt_conns_ms_send_tsb_pd_delay 0
+srt_conns_packets_receive_buf 0
+srt_conns_bytes_receive_buf 0
+srt_conns_ms_receive_buf 0
+srt_conns_ms_receive_tsb_pd_delay 0
+srt_conns_packets_reorder_tolerance 0
+srt_conns_packets_received_avg_belated_time 0
+srt_conns_packets_send_loss_rate 0
+srt_conns_packets_received_loss_rate 0
 webrtc_sessions 0
 webrtc_sessions_bytes_received 0
 webrtc_sessions_bytes_sent 0
@@ -141,14 +206,18 @@ webrtc_sessions_bytes_sent 0
 			conn, err := rtmp.NewClientConn(nconn, u, true)
 			require.NoError(t, err)
 
-			_, err = rtmp.NewWriter(conn, test.FormatH264, nil)
+			w, err := rtmp.NewWriter(conn, test.FormatH264, nil)
 			require.NoError(t, err)
+
+			err = w.WriteH264(2*time.Second, 2*time.Second, [][]byte{{5, 2, 3, 4}})
+			require.NoError(t, err)
+
 			<-terminate
 		}()
 
 		go func() {
 			defer wg.Done()
-			u, err := url.Parse("rtmp://localhost:1936/rtmps_path")
+			u, err := url.Parse("rtmps://localhost:1936/rtmps_path")
 			require.NoError(t, err)
 
 			nconn, err := tls.Dial("tcp", u.Host, &tls.Config{InsecureSkipVerify: true})
@@ -158,8 +227,12 @@ webrtc_sessions_bytes_sent 0
 			conn, err := rtmp.NewClientConn(nconn, u, true)
 			require.NoError(t, err)
 
-			_, err = rtmp.NewWriter(conn, test.FormatH264, nil)
+			w, err := rtmp.NewWriter(conn, test.FormatH264, nil)
 			require.NoError(t, err)
+
+			err = w.WriteH264(2*time.Second, 2*time.Second, [][]byte{{5, 2, 3, 4}})
+			require.NoError(t, err)
+
 			<-terminate
 		}()
 
@@ -173,12 +246,6 @@ webrtc_sessions_bytes_sent 0
 			defer tr.CloseIdleConnections()
 			hc2 := &http.Client{Transport: tr}
 
-			s := &whip.Client{
-				HTTPClient: hc2,
-				URL:        su,
-				Log:        test.NilLogger,
-			}
-
 			track := &webrtc.OutgoingTrack{
 				Caps: pwebrtc.RTPCodecCapability{
 					MimeType:    pwebrtc.MimeTypeH264,
@@ -187,7 +254,15 @@ webrtc_sessions_bytes_sent 0
 				},
 			}
 
-			err = s.Publish(context.Background(), []*webrtc.OutgoingTrack{track})
+			s := &whip.Client{
+				HTTPClient:     hc2,
+				URL:            su,
+				Log:            test.NilLogger,
+				Publish:        true,
+				OutgoingTracks: []*webrtc.OutgoingTrack{track},
+			}
+
+			err = s.Initialize(context.Background())
 			require.NoError(t, err)
 			defer checkClose(t, s.Close)
 
@@ -225,10 +300,11 @@ webrtc_sessions_bytes_sent 0
 			}
 
 			bw := bufio.NewWriter(publisher)
-			w := mpegts.NewWriter(bw, []*mpegts.Track{track})
+			w := &mpegts.Writer{W: bw, Tracks: []*mpegts.Track{track}}
+			err = w.Initialize()
 			require.NoError(t, err)
 
-			err = w.WriteH264(track, 0, 0, true, [][]byte{
+			err = w.WriteH264(track, 0, 0, [][]byte{
 				test.FormatH264.SPS,
 				test.FormatH264.PPS,
 				{0x05, 1}, // IDR
@@ -240,7 +316,7 @@ webrtc_sessions_bytes_sent 0
 			<-terminate
 		}()
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(500*time.Millisecond + 2*time.Second)
 
 		bo := httpPullFile(t, hc, "http://localhost:9998/metrics")
 
@@ -281,12 +357,28 @@ webrtc_sessions_bytes_sent 0
 				`rtsp_sessions\{id=".*?",state="publish"\} 1`+"\n"+
 				`rtsp_sessions_bytes_received\{id=".*?",state="publish"\} 0`+"\n"+
 				`rtsp_sessions_bytes_sent\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsp_sessions_rtp_packets_received\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsp_sessions_rtp_packets_sent\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsp_sessions_rtp_packets_lost\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsp_sessions_rtp_packets_in_error\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsp_sessions_rtp_packets_jitter\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsp_sessions_rtcp_packets_received\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsp_sessions_rtcp_packets_sent\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsp_sessions_rtcp_packets_in_error\{id=".*?",state="publish"\} [0-9]+`+"\n"+
 				`rtsps_conns\{id=".*?"\} 1`+"\n"+
 				`rtsps_conns_bytes_received\{id=".*?"\} [0-9]+`+"\n"+
 				`rtsps_conns_bytes_sent\{id=".*?"\} [0-9]+`+"\n"+
 				`rtsps_sessions\{id=".*?",state="publish"\} 1`+"\n"+
 				`rtsps_sessions_bytes_received\{id=".*?",state="publish"\} 0`+"\n"+
 				`rtsps_sessions_bytes_sent\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsps_sessions_rtp_packets_received\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsps_sessions_rtp_packets_sent\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsps_sessions_rtp_packets_lost\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsps_sessions_rtp_packets_in_error\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsps_sessions_rtp_packets_jitter\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsps_sessions_rtcp_packets_received\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsps_sessions_rtcp_packets_sent\{id=".*?",state="publish"\} [0-9]+`+"\n"+
+				`rtsps_sessions_rtcp_packets_in_error\{id=".*?",state="publish"\} [0-9]+`+"\n"+
 				`rtmp_conns\{id=".*?",state="publish"\} 1`+"\n"+
 				`rtmp_conns_bytes_received\{id=".*?",state="publish"\} [0-9]+`+"\n"+
 				`rtmp_conns_bytes_sent\{id=".*?",state="publish"\} [0-9]+`+"\n"+
@@ -355,7 +447,7 @@ webrtc_sessions_bytes_sent 0
 		wg.Wait()
 	})
 
-	t.Run("servers deleted", func(t *testing.T) {
+	t.Run("servers disabled", func(t *testing.T) {
 		httpRequest(t, hc, http.MethodPatch, "http://localhost:9997/v3/config/global/patch", map[string]interface{}{
 			"rtsp":   false,
 			"rtmp":   false,

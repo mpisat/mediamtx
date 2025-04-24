@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/MicahParks/jwkset"
-	"github.com/bluenviron/gortsplib/v4/pkg/auth"
 	"github.com/bluenviron/gortsplib/v4/pkg/base"
 	"github.com/bluenviron/mediamtx/internal/conf"
 	"github.com/golang-jwt/jwt/v5"
@@ -56,8 +55,6 @@ func TestAuthInternal(t *testing.T) {
 							}},
 						},
 					},
-					HTTPAddress:     "",
-					RTSPAuthMethods: nil,
 				}
 
 				switch encryption {
@@ -142,49 +139,52 @@ func TestAuthInternal(t *testing.T) {
 	}
 }
 
-func TestAuthInternalRTSPDigest(t *testing.T) {
-	m := Manager{
-		Method: conf.AuthMethodInternal,
-		InternalUsers: []conf.AuthInternalUser{
-			{
-				User: "myuser",
-				Pass: "mypass",
-				IPs:  conf.IPNetworks{mustParseCIDR("127.1.1.1/32")},
-				Permissions: []conf.AuthInternalUserPermission{{
-					Action: conf.AuthActionPublish,
-					Path:   "mypath",
-				}},
-			},
-		},
-		HTTPAddress:     "",
-		RTSPAuthMethods: []auth.ValidateMethod{auth.ValidateMethodDigestMD5},
+func TestAuthInternalCustomVerifyFunc(t *testing.T) {
+	for _, ca := range []string{"ok", "invalid"} {
+		t.Run(ca, func(t *testing.T) {
+			m := Manager{
+				Method: conf.AuthMethodInternal,
+				InternalUsers: []conf.AuthInternalUser{
+					{
+						User: "myuser",
+						Pass: "mypass",
+						IPs:  conf.IPNetworks{mustParseCIDR("127.1.1.1/32")},
+						Permissions: []conf.AuthInternalUserPermission{{
+							Action: conf.AuthActionPublish,
+							Path:   "mypath",
+						}},
+					},
+				},
+			}
+
+			u, err := base.ParseURL("rtsp://127.0.0.1:8554/mypath")
+			require.NoError(t, err)
+
+			req := &base.Request{
+				Method: "ANNOUNCE",
+				URL:    u,
+			}
+
+			req1 := &Request{
+				IP:     net.ParseIP("127.1.1.1"),
+				Action: conf.AuthActionPublish,
+				Path:   "mypath",
+				CustomVerifyFunc: func(expectedUser, expectedPass string) bool {
+					require.Equal(t, "myuser", expectedUser)
+					require.Equal(t, "mypass", expectedPass)
+					return (ca == "ok")
+				},
+			}
+			req1.FillFromRTSPRequest(req)
+			err = m.Authenticate(req1)
+
+			if ca == "ok" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
 	}
-
-	u, err := base.ParseURL("rtsp://127.0.0.1:8554/mypath")
-	require.NoError(t, err)
-
-	s, err := auth.NewSender(
-		auth.GenerateWWWAuthenticate([]auth.ValidateMethod{auth.ValidateMethodDigestMD5}, "IPCAM", "mynonce"),
-		"myuser",
-		"mypass",
-	)
-	require.NoError(t, err)
-
-	req := &base.Request{
-		Method: "ANNOUNCE",
-		URL:    u,
-	}
-
-	s.AddAuthorization(req)
-
-	err = m.Authenticate(&Request{
-		IP:          net.ParseIP("127.1.1.1"),
-		Action:      conf.AuthActionPublish,
-		Path:        "mypath",
-		RTSPRequest: req,
-		RTSPNonce:   "mynonce",
-	})
-	require.NoError(t, err)
 }
 
 func TestAuthInternalCredentialsInBearer(t *testing.T) {
@@ -201,20 +201,19 @@ func TestAuthInternalCredentialsInBearer(t *testing.T) {
 				}},
 			},
 		},
-		HTTPAddress:     "",
-		RTSPAuthMethods: []auth.ValidateMethod{auth.ValidateMethodDigestMD5},
 	}
 
-	err := m.Authenticate(&Request{
+	req := &Request{
 		IP:       net.ParseIP("127.1.1.1"),
 		Action:   conf.AuthActionPublish,
 		Path:     "mypath",
 		Protocol: ProtocolRTSP,
-		HTTPRequest: &http.Request{
-			Header: http.Header{"Authorization": []string{"Bearer myuser:mypass"}},
-			URL:    &url.URL{},
-		},
+	}
+	req.FillFromHTTPRequest(&http.Request{
+		Header: http.Header{"Authorization": []string{"Bearer myuser:mypass"}},
+		URL:    &url.URL{},
 	})
+	err := m.Authenticate(req)
 	require.NoError(t, err)
 }
 
@@ -266,9 +265,8 @@ func TestAuthHTTP(t *testing.T) {
 			defer httpServ.Shutdown(context.Background())
 
 			m := Manager{
-				Method:          conf.AuthMethodHTTP,
-				HTTPAddress:     "http://127.0.0.1:9120/auth",
-				RTSPAuthMethods: nil,
+				Method:      conf.AuthMethodHTTP,
+				HTTPAddress: "http://127.0.0.1:9120/auth",
 			}
 
 			if outcome == "ok" {
@@ -305,7 +303,6 @@ func TestAuthHTTPExclude(t *testing.T) {
 		HTTPExclude: []conf.AuthInternalUserPermission{{
 			Action: conf.AuthActionPublish,
 		}},
-		RTSPAuthMethods: nil,
 	}
 
 	err := m.Authenticate(&Request{
@@ -399,16 +396,17 @@ func TestAuthJWT(t *testing.T) {
 					Query:    "param=value&jwt=" + ss,
 				})
 			} else {
-				err = m.Authenticate(&Request{
+				req := &Request{
 					IP:       net.ParseIP("127.0.0.1"),
 					Action:   conf.AuthActionPublish,
 					Path:     "mypath",
 					Protocol: ProtocolWebRTC,
-					HTTPRequest: &http.Request{
-						Header: http.Header{"Authorization": []string{"Bearer " + ss}},
-						URL:    &url.URL{},
-					},
+				}
+				req.FillFromHTTPRequest(&http.Request{
+					Header: http.Header{"Authorization": []string{"Bearer " + ss}},
+					URL:    &url.URL{},
 				})
+				err = m.Authenticate(req)
 			}
 			require.NoError(t, err)
 		})

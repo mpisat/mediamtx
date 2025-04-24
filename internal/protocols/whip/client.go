@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/pion/sdp/v3"
-	pwebrtc "github.com/pion/webrtc/v3"
+	pwebrtc "github.com/pion/webrtc/v4"
 
 	"github.com/bluenviron/mediamtx/internal/conf"
 	"github.com/bluenviron/mediamtx/internal/logger"
@@ -26,34 +26,36 @@ const (
 
 // Client is a WHIP client.
 type Client struct {
-	HTTPClient *http.Client
-	URL        *url.URL
-	Log        logger.Writer
+	URL                  *url.URL
+	Publish              bool
+	OutgoingTracks       []*webrtc.OutgoingTrack
+	HTTPClient           *http.Client
+	UseAbsoluteTimestamp bool
+	Log                  logger.Writer
 
 	pc               *webrtc.PeerConnection
 	patchIsSupported bool
 }
 
-// Publish publishes tracks.
-func (c *Client) Publish(
-	ctx context.Context,
-	outgoingTracks []*webrtc.OutgoingTrack,
-) error {
+// Initialize initializes the Client.
+func (c *Client) Initialize(ctx context.Context) error {
 	iceServers, err := c.optionsICEServers(ctx)
 	if err != nil {
 		return err
 	}
 
 	c.pc = &webrtc.PeerConnection{
-		ICEServers:         iceServers,
-		HandshakeTimeout:   conf.StringDuration(10 * time.Second),
-		TrackGatherTimeout: conf.StringDuration(2 * time.Second),
-		LocalRandomUDP:     true,
-		IPsFromInterfaces:  true,
-		Publish:            true,
-		OutgoingTracks:     outgoingTracks,
-		Log:                c.Log,
+		LocalRandomUDP:       true,
+		ICEServers:           iceServers,
+		IPsFromInterfaces:    true,
+		HandshakeTimeout:     conf.Duration(10 * time.Second),
+		TrackGatherTimeout:   conf.Duration(2 * time.Second),
+		Publish:              c.Publish,
+		OutgoingTracks:       c.OutgoingTracks,
+		UseAbsoluteTimestamp: c.UseAbsoluteTimestamp,
+		Log:                  c.Log,
 	}
+
 	err = c.pc.Start()
 	if err != nil {
 		return err
@@ -77,6 +79,23 @@ func (c *Client) Publish(
 		return err
 	}
 
+	if !c.Publish {
+		var sdp sdp.SessionDescription
+		err = sdp.Unmarshal([]byte(res.Answer.SDP))
+		if err != nil {
+			c.deleteSession(context.Background()) //nolint:errcheck
+			c.pc.Close()
+			return err
+		}
+
+		err = webrtc.TracksAreValid(sdp.MediaDescriptions)
+		if err != nil {
+			c.deleteSession(context.Background()) //nolint:errcheck
+			c.pc.Close()
+			return err
+		}
+	}
+
 	err = c.pc.SetAnswer(res.Answer)
 	if err != nil {
 		c.deleteSession(context.Background()) //nolint:errcheck
@@ -91,7 +110,7 @@ outer:
 	for {
 		select {
 		case ca := <-c.pc.NewLocalCandidate():
-			err := c.patchCandidate(ctx, offer, res.ETag, ca)
+			err = c.patchCandidate(ctx, offer, res.ETag, ca)
 			if err != nil {
 				c.deleteSession(context.Background()) //nolint:errcheck
 				c.pc.Close()
@@ -110,109 +129,26 @@ outer:
 		}
 	}
 
-	return nil
-}
-
-// Read reads tracks.
-func (c *Client) Read(ctx context.Context) ([]*webrtc.IncomingTrack, error) {
-	iceServers, err := c.optionsICEServers(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	c.pc = &webrtc.PeerConnection{
-		ICEServers:         iceServers,
-		HandshakeTimeout:   conf.StringDuration(10 * time.Second),
-		TrackGatherTimeout: conf.StringDuration(2 * time.Second),
-		LocalRandomUDP:     true,
-		IPsFromInterfaces:  true,
-		Publish:            false,
-		Log:                c.Log,
-	}
-	err = c.pc.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	offer, err := c.pc.CreatePartialOffer()
-	if err != nil {
-		c.pc.Close()
-		return nil, err
-	}
-
-	res, err := c.postOffer(ctx, offer)
-	if err != nil {
-		c.pc.Close()
-		return nil, err
-	}
-
-	c.URL, err = c.URL.Parse(res.Location)
-	if err != nil {
-		c.pc.Close()
-		return nil, err
-	}
-
-	var sdp sdp.SessionDescription
-	err = sdp.Unmarshal([]byte(res.Answer.SDP))
-	if err != nil {
-		c.deleteSession(context.Background()) //nolint:errcheck
-		c.pc.Close()
-		return nil, err
-	}
-
-	err = webrtc.TracksAreValid(sdp.MediaDescriptions)
-	if err != nil {
-		c.deleteSession(context.Background()) //nolint:errcheck
-		c.pc.Close()
-		return nil, err
-	}
-
-	err = c.pc.SetAnswer(res.Answer)
-	if err != nil {
-		c.deleteSession(context.Background()) //nolint:errcheck
-		c.pc.Close()
-		return nil, err
-	}
-
-	t := time.NewTimer(handshakeTimeout)
-	defer t.Stop()
-
-outer:
-	for {
-		select {
-		case ca := <-c.pc.NewLocalCandidate():
-			err = c.patchCandidate(ctx, offer, res.ETag, ca)
-			if err != nil {
-				c.deleteSession(context.Background()) //nolint:errcheck
-				c.pc.Close()
-				return nil, err
-			}
-
-		case <-c.pc.GatheringDone():
-
-		case <-c.pc.Connected():
-			break outer
-
-		case <-t.C:
+	if !c.Publish {
+		err = c.pc.GatherIncomingTracks(ctx)
+		if err != nil {
 			c.deleteSession(context.Background()) //nolint:errcheck
 			c.pc.Close()
-			return nil, fmt.Errorf("deadline exceeded while waiting connection")
+			return err
 		}
 	}
 
-	tracks, err := c.pc.GatherIncomingTracks(ctx)
-	if err != nil {
-		c.deleteSession(context.Background()) //nolint:errcheck
-		c.pc.Close()
-		return nil, err
-	}
-
-	return tracks, nil
+	return nil
 }
 
 // PeerConnection returns the underlying peer connection.
 func (c *Client) PeerConnection() *webrtc.PeerConnection {
 	return c.pc
+}
+
+// IncomingTracks returns incoming tracks.
+func (c *Client) IncomingTracks() []*webrtc.IncomingTrack {
+	return c.pc.IncomingTracks()
 }
 
 // StartReading starts reading all incoming tracks.
@@ -230,7 +166,7 @@ func (c *Client) Close() error {
 // Wait waits for client errors.
 func (c *Client) Wait(ctx context.Context) error {
 	select {
-	case <-c.pc.Disconnected():
+	case <-c.pc.Failed():
 		return fmt.Errorf("peer connection closed")
 
 	case <-ctx.Done():

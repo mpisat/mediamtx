@@ -4,9 +4,9 @@
   <br>
   <br>
 
-  [![Test](https://github.com/bluenviron/mediamtx/workflows/test/badge.svg)](https://github.com/bluenviron/mediamtx/actions?query=workflow:test)
-  [![Lint](https://github.com/bluenviron/mediamtx/workflows/lint/badge.svg)](https://github.com/bluenviron/mediamtx/actions?query=workflow:lint)
-  [![CodeCov](https://codecov.io/gh/bluenviron/mediamtx/branch/main/graph/badge.svg)](https://app.codecov.io/gh/bluenviron/mediamtx/branch/main)
+  [![Test](https://github.com/bluenviron/mediamtx/actions/workflows/code_test.yml/badge.svg)](https://github.com/bluenviron/mediamtx/actions/workflows/code_test.yml)
+  [![Lint](https://github.com/bluenviron/mediamtx/actions/workflows/code_lint.yml/badge.svg)](https://github.com/bluenviron/mediamtx/actions/workflows/code_lint.yml)
+  [![CodeCov](https://codecov.io/gh/bluenviron/mediamtx/branch/main/graph/badge.svg)](https://app.codecov.io/gh/bluenviron/mediamtx/tree/main)
   [![Release](https://img.shields.io/github/v/release/bluenviron/mediamtx)](https://github.com/bluenviron/mediamtx/releases)
   [![Docker Hub](https://img.shields.io/badge/docker-bluenviron/mediamtx-blue)](https://hub.docker.com/r/bluenviron/mediamtx)
   [![API Documentation](https://img.shields.io/badge/api-documentation-blue)](https://bluenviron.github.io/mediamtx)
@@ -22,13 +22,13 @@ Live streams can be published to the server with:
 |--------|--------|------------|------------|
 |[SRT clients](#srt-clients)||H265, H264, MPEG-4 Video (H263, Xvid), MPEG-1/2 Video|Opus, MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), AC-3|
 |[SRT cameras and servers](#srt-cameras-and-servers)||H265, H264, MPEG-4 Video (H263, Xvid), MPEG-1/2 Video|Opus, MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), AC-3|
-|[WebRTC clients](#webrtc-clients)|WHIP|AV1, VP9, VP8, H265, H264|Opus, G722, G711 (PCMA, PCMU)|
-|[WebRTC servers](#webrtc-servers)|WHEP|AV1, VP9, VP8, H265, H264|Opus, G722, G711 (PCMA, PCMU)|
+|[WebRTC clients](#webrtc-clients)|WHIP|AV1, VP9, VP8, [H265](#supported-browsers), H264|Opus, G722, G711 (PCMA, PCMU)|
+|[WebRTC servers](#webrtc-servers)|WHEP|AV1, VP9, VP8, [H265](#supported-browsers), H264|Opus, G722, G711 (PCMA, PCMU)|
 |[RTSP clients](#rtsp-clients)|UDP, TCP, RTSPS|AV1, VP9, VP8, H265, H264, MPEG-4 Video (H263, Xvid), MPEG-1/2 Video, M-JPEG and any RTP-compatible codec|Opus, MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), AC-3, G726, G722, G711 (PCMA, PCMU), LPCM and any RTP-compatible codec|
 |[RTSP cameras and servers](#rtsp-cameras-and-servers)|UDP, UDP-Multicast, TCP, RTSPS|AV1, VP9, VP8, H265, H264, MPEG-4 Video (H263, Xvid), MPEG-1/2 Video, M-JPEG and any RTP-compatible codec|Opus, MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), AC-3, G726, G722, G711 (PCMA, PCMU), LPCM and any RTP-compatible codec|
-|[RTMP clients](#rtmp-clients)|RTMP, RTMPS, Enhanced RTMP|AV1, VP9, H265, H264|MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), G711 (PCMA, PCMU), LPCM|
-|[RTMP cameras and servers](#rtmp-cameras-and-servers)|RTMP, RTMPS, Enhanced RTMP|AV1, VP9, H265, H264|MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), G711 (PCMA, PCMU), LPCM|
-|[HLS cameras and servers](#hls-cameras-and-servers)|Low-Latency HLS, MP4-based HLS, legacy HLS|AV1, VP9, H265, H264|Opus, MPEG-4 Audio (AAC)|
+|[RTMP clients](#rtmp-clients)|RTMP, RTMPS, Enhanced RTMP|AV1, VP9, H265, H264|Opus, MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), AC-3, G711 (PCMA, PCMU), LPCM|
+|[RTMP cameras and servers](#rtmp-cameras-and-servers)|RTMP, RTMPS, Enhanced RTMP|AV1, VP9, H265, H264|Opus, MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), AC-3, G711 (PCMA, PCMU), LPCM|
+|[HLS cameras and servers](#hls-cameras-and-servers)|Low-Latency HLS, MP4-based HLS, legacy HLS|AV1, VP9, [H265](#supported-browsers-1), H264|Opus, MPEG-4 Audio (AAC)|
 |[UDP/MPEG-TS](#udpmpeg-ts)|Unicast, broadcast, multicast|H265, H264, MPEG-4 Video (H263, Xvid), MPEG-1/2 Video|Opus, MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), AC-3|
 |[Raspberry Pi Cameras](#raspberry-pi-cameras)||H264||
 
@@ -37,10 +37,10 @@ Live streams can be read from the server with:
 |protocol|variants|video codecs|audio codecs|
 |--------|--------|------------|------------|
 |[SRT](#srt)||H265, H264, MPEG-4 Video (H263, Xvid), MPEG-1/2 Video|Opus, MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), AC-3|
-|[WebRTC](#webrtc)|WHEP|AV1, VP9, VP8, H264|Opus, G722, G711 (PCMA, PCMU)|
+|[WebRTC](#webrtc)|WHEP|AV1, VP9, VP8, [H265](#supported-browsers), H264|Opus, G722, G711 (PCMA, PCMU)|
 |[RTSP](#rtsp)|UDP, UDP-Multicast, TCP, RTSPS|AV1, VP9, VP8, H265, H264, MPEG-4 Video (H263, Xvid), MPEG-1/2 Video, M-JPEG and any RTP-compatible codec|Opus, MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3), AC-3, G726, G722, G711 (PCMA, PCMU), LPCM and any RTP-compatible codec|
 |[RTMP](#rtmp)|RTMP, RTMPS, Enhanced RTMP|H264|MPEG-4 Audio (AAC), MPEG-1/2 Audio (MP3)|
-|[HLS](#hls)|Low-Latency HLS, MP4-based HLS, legacy HLS|AV1, VP9, H265, H264|Opus, MPEG-4 Audio (AAC)|
+|[HLS](#hls)|Low-Latency HLS, MP4-based HLS, legacy HLS|AV1, VP9, [H265](#supported-browsers-1), H264|Opus, MPEG-4 Audio (AAC)|
 
 Live streams be recorded and played back with:
 
@@ -88,6 +88,8 @@ _rtsp-simple-server_ has been rebranded as _MediaMTX_. The reason is pretty obvi
   * [By device](#by-device)
     * [Generic webcam](#generic-webcam)
     * [Raspberry Pi Cameras](#raspberry-pi-cameras)
+      * [Adding audio](#adding-audio)
+      * [Secondary stream](#secondary-stream)
   * [By protocol](#by-protocol)
     * [SRT clients](#srt-clients)
     * [SRT cameras and servers](#srt-cameras-and-servers)
@@ -125,6 +127,8 @@ _rtsp-simple-server_ has been rebranded as _MediaMTX_. The reason is pretty obvi
   * [Forward streams to other servers](#forward-streams-to-other-servers)
   * [Proxy requests to other servers](#proxy-requests-to-other-servers)
   * [On-demand publishing](#on-demand-publishing)
+  * [Route absolute timestamps](#route-absolute-timestamps)
+  * [Expose the server in a subfolder](#expose-the-server-in-a-subfolder)
   * [Start on boot](#start-on-boot)
     * [Linux](#linux)
     * [OpenWrt](#openwrt)
@@ -138,6 +142,9 @@ _rtsp-simple-server_ has been rebranded as _MediaMTX_. The reason is pretty obvi
   * [WebRTC-specific features](#webrtc-specific-features)
     * [Authenticating with WHIP/WHEP](#authenticating-with-whipwhep)
     * [Solving WebRTC connectivity issues](#solving-webrtc-connectivity-issues)
+    * [Supported browsers](#supported-browsers)
+  * [HLS-specific features](#hls-specific-features)
+    * [Supported browsers](#supported-browsers-1)
   * [RTSP-specific features](#rtsp-specific-features)
     * [Transport protocols](#transport-protocols)
     * [Encryption](#encryption)
@@ -185,11 +192,13 @@ Available images:
 |bluenviron/mediamtx:latest-rpi|:x:|:heavy_check_mark:|
 |bluenviron/mediamtx:latest-ffmpeg-rpi|:heavy_check_mark:|:heavy_check_mark:|
 
-The `--network=host` flag is mandatory for RTSP to work, since Docker can change the source port of UDP packets for routing reasons, and this doesn't allow the server to identify the senders of the packets. This issue can be avoided by disabling the RTSP UDP transport protocol:
+The `--network=host` flag is mandatory for RTSP to work, since Docker can change the source port of UDP packets for routing reasons, and this doesn't allow the server to identify the senders of the packets.
+
+If the `--network=host` cannot be used (for instance, it is not compatible with Windows or Kubernetes), you can disable the RTSP UDP transport protocol, add the server IP to `MTX_WEBRTCADDITIONALHOSTS` and expose ports manually:
 
 ```
 docker run --rm -it \
--e MTX_PROTOCOLS=tcp \
+-e MTX_RTSPTRANSPORTS=tcp \
 -e MTX_WEBRTCADDITIONALHOSTS=192.168.x.x \
 -p 8554:8554 \
 -p 1935:1935 \
@@ -199,8 +208,6 @@ docker run --rm -it \
 -p 8189:8189/udp \
 bluenviron/mediamtx
 ```
-
-set `MTX_WEBRTCADDITIONALHOSTS` to your local IP address.
 
 ### Arch Linux package
 
@@ -269,7 +276,7 @@ The RTSP protocol supports multiple underlying transport protocols, each with it
 ffmpeg -re -stream_loop -1 -i file.ts -c copy -f rtsp -rtsp_transport tcp rtsp://localhost:8554/mystream
 ```
 
-The resulting stream will be available in path `/mystream`.
+The resulting stream is available in path `/mystream`.
 
 #### GStreamer
 
@@ -296,7 +303,7 @@ gst-launch-1.0 filesrc location=file.mp4 ! qtdemux name=d \
 d.video_0 ! rtspclientsink protocols=tcp name=s location=rtsp://localhost:8554/mystream
 ```
 
-The resulting stream will be available in path `/mystream`.
+The resulting stream is available in path `/mystream`.
 
 GStreamer can also publish a stream by using the [WebRTC / WHIP protocol](#webrtc). Make sure that GStreamer version is at least 1.22, and that if the codec is H264, the profile is baseline. Use the `whipclientsink` element:
 
@@ -345,7 +352,7 @@ Latest versions of OBS Studio can publish to the server with the [WebRTC / WHIP 
 
 Save the configuration and click `Start streaming`.
 
-The resulting stream will be available in path `/mystream`.
+The resulting stream is available in path `/mystream`.
 
 #### OpenCV
 
@@ -420,7 +427,7 @@ while True:
     start = now
 ```
 
-The resulting stream will be available in path `/mystream`.
+The resulting stream is available in path `/mystream`.
 
 #### Unity
 
@@ -531,7 +538,7 @@ public class WebRTCPublisher : MonoBehaviour
 
 In the _Hierarchy_ window, find or create a scene and a camera, then add the `WebRTCPublisher.cs` script as component of the camera, by dragging it inside the _Inspector_ window. then Press the _Play_ button at the top of the page.
 
-The resulting stream will be available in path `/unity`.
+The resulting stream is available in path `/unity`.
 
 #### Web browsers
 
@@ -541,7 +548,7 @@ Web browsers can publish a stream to the server by using the [WebRTC protocol](#
 http://localhost:8889/mystream/publish
 ```
 
-The resulting stream will be available in path `/mystream`.
+The resulting stream is available in path `/mystream`.
 
 This web page can be embedded into another web page by using an iframe:
 
@@ -549,7 +556,7 @@ This web page can be embedded into another web page by using an iframe:
 <iframe src="http://mediamtx-ip:8889/mystream/publish" scrolling="no"></iframe>
 ```
 
-For more advanced setups, you can create and serve a custom web page by starting from the [source code of the WebRTC publish page](internal/servers/webrtc/publish_index.html).
+For more advanced setups, you can create and serve a custom web page by starting from the [source code of the WebRTC publish page](internal/servers/webrtc/publish_index.html). In particular, there's a ready-to-use, standalone JavaScript class for publishing streams with WebRTC, available in [publisher.js](internal/servers/webrtc/publisher.js).
 
 ### By device
 
@@ -579,7 +586,7 @@ Where `USB2.0 HD UVC WebCam` is the name of a webcam, that can be obtained with:
 ffmpeg -list_devices true -f dshow -i dummy
 ```
 
-The resulting stream will be available in path `/cam`.
+The resulting stream is available in path `/cam`.
 
 #### Raspberry Pi Cameras
 
@@ -606,7 +613,7 @@ If you want to run the standard (non-Docker) version of the server:
        source: rpiCamera
    ```
 
-The resulting stream will be available in path `/cam`.
+The resulting stream is available in path `/cam`.
 
 If you want to run the server inside Docker, you need to use the `latest-rpi` image and launch the container with some additional flags:
 
@@ -620,7 +627,7 @@ docker run --rm -it \
 bluenviron/mediamtx:latest-rpi
 ```
 
-Be aware that the server is not compatible with cameras that requires a custom `libcamera` (like some ArduCam products), since it comes with a bundled `libcamera`. If you want to use a custom one, you can [compile from source](#custom-libcamera).
+Be aware that precompiled binaries and Docker images are not compatible with cameras that require a custom `libcamera` (like some ArduCam products), since they come with a bundled `libcamera`. If you want to use a custom one, you can [compile from source](#custom-libcamera).
 
 Camera settings can be changed by using the `rpiCamera*` parameters:
 
@@ -633,6 +640,8 @@ paths:
 ```
 
 All available parameters are listed in the [sample configuration file](/mediamtx.yml).
+
+##### Adding audio
 
 In order to add audio from a USB microfone, install GStreamer and alsa-utils:
 
@@ -673,7 +682,42 @@ paths:
     runOnInitRestart: yes
 ```
 
-The resulting stream will be available in path `/cam_with_audio`.
+The resulting stream is available in path `/cam_with_audio`.
+
+##### Secondary stream
+
+It is possible to enable a secondary stream from the same camera, with a different resolution, FPS and codec. Configuration is the same of a primary stream, with `rpiCameraSecondary` set to `true` and parameters adjusted accordingly:
+
+```yml
+paths:
+  # primary stream
+  rpi:
+    source: rpiCamera
+    # Width of frames.
+    rpiCameraWidth: 1920
+    # Height of frames.
+    rpiCameraHeight: 1080
+    # FPS.
+    rpiCameraFPS: 30
+
+  # secondary stream
+  secondary:
+    source: rpiCamera
+    # This is a secondary stream.
+    rpiCameraSecondary: true
+    # Width of frames.
+    rpiCameraWidth: 640
+    # Height of frames.
+    rpiCameraHeight: 480
+    # FPS.
+    rpiCameraFPS: 10
+    # Codec. in case of secondary streams, it defaults to M-JPEG.
+    rpiCameraCodec: auto
+    # JPEG quality.
+    rpiCameraJPEGQuality: 60
+```
+
+The secondary stream is available in path `/secondary`.
 
 ### By protocol
 
@@ -685,7 +729,7 @@ SRT is a protocol that allows to publish and read live data stream, providing en
 srt://localhost:8890?streamid=publish:mystream&pkt_size=1316
 ```
 
-Replace `mystream` with any name you want. The resulting stream will be available in path `/mystream`.
+Replace `mystream` with any name you want. The resulting stream is available in path `/mystream`.
 
 If credentials are enabled, append username and password to `streamid`:
 
@@ -718,7 +762,7 @@ WebRTC is an API that makes use of a set of protocols and methods to connect two
 http://localhost:8889/mystream/publish
 ```
 
-The resulting stream will be available in path `/mystream`.
+The resulting stream is available in path `/mystream`.
 
 WHIP is a WebRTC extensions that allows to publish streams by using a URL, without passing through a web page. This allows to use WebRTC as a general purpose streaming protocol. If you are using a software that supports WHIP (for instance, latest versions of OBS Studio), you can publish a stream to the server by using this URL:
 
@@ -751,7 +795,7 @@ RTSP is a protocol that allows to publish and read streams. It supports differen
 rtsp://localhost:8554/mystream
 ```
 
-The resulting stream will be available in path `/mystream`.
+The resulting stream is available in path `/mystream`.
 
 Known clients that can publish with RTSP are [FFmpeg](#ffmpeg), [GStreamer](#gstreamer), [OBS Studio](#obs-studio).
 
@@ -766,7 +810,7 @@ paths:
     source: rtsp://original-url
 ```
 
-The resulting stream will be available in path `/proxied`.
+The resulting stream is available in path `/proxied`.
 
 The server supports any number of source streams (count is just limited by available hardware resources) it's enough to add additional entries to the paths section:
 
@@ -787,7 +831,7 @@ RTMP is a protocol that allows to read and publish streams, but is less versatil
 rtmp://localhost/mystream
 ```
 
-The resulting stream will be available in path `/mystream`.
+The resulting stream is available in path `/mystream`.
 
 In case authentication is enabled, credentials can be passed to the server by using the `user` and `pass` query parameters:
 
@@ -808,7 +852,7 @@ paths:
     source: rtmp://original-url
 ```
 
-The resulting stream will be available in path `/proxied`.
+The resulting stream is available in path `/proxied`.
 
 #### HLS cameras and servers
 
@@ -821,7 +865,7 @@ paths:
     source: http://original-url/stream/index.m3u8
 ```
 
-The resulting stream will be available in path `/proxied`.
+The resulting stream is available in path `/proxied`.
 
 #### UDP/MPEG-TS
 
@@ -849,7 +893,7 @@ paths:
     source: udp://238.0.0.1:1234
 ```
 
-The resulting stream will be available in path `/mypath`.
+The resulting stream is available in path `/mypath`.
 
 Known clients that can publish with WebRTC and WHIP are [FFmpeg](#ffmpeg) and [GStreamer](#gstreamer).
 
@@ -889,6 +933,32 @@ If encryption is enabled, set `tls-validation-flags` to `0`:
 
 ```sh
 gst-launch-1.0 rtspsrc tls-validation-flags=0 location=rtsps://ip:8322/...
+```
+
+GStreamer also supports reading streams with WebRTC/WHEP, although track codecs must be specified in advance through the `video-caps` and `audio-caps` parameters. Furthermore, if audio is not present, `audio-caps` must be set anyway and must point to a PCMU codec. For instance, the command for reading a video-only H264 stream is:
+
+```sh
+gst-launch-1.0 whepsrc whep-endpoint=http://127.0.0.1:8889/stream/whep use-link-headers=true \
+video-caps="application/x-rtp,media=video,encoding-name=H264,payload=127,clock-rate=90000" \
+audio-caps="application/x-rtp,media=audio,encoding-name=PCMU,payload=0,clock-rate=8000" \
+! rtph264depay ! decodebin ! autovideosink
+```
+
+While the command for reading an audio-only Opus stream is:
+
+```sh
+gst-launch-1.0 whepsrc whep-endpoint="http://127.0.0.1:8889/stream/whep" use-link-headers=true \
+audio-caps="application/x-rtp,media=audio,encoding-name=OPUS,payload=111,clock-rate=48000,encoding-params=(string)2" \
+! rtpopusdepay ! decodebin ! autoaudiosink
+```
+
+While the command for reading a H264 and Opus stream is:
+
+```sh
+gst-launch-1.0 whepsrc whep-endpoint=http://127.0.0.1:8889/stream/whep use-link-headers=true \
+video-caps="application/x-rtp,media=video,encoding-name=H264,payload=127,clock-rate=90000" \
+audio-caps="application/x-rtp,media=audio,encoding-name=OPUS,payload=111,clock-rate=48000,encoding-params=(string)2" \
+! decodebin ! autovideosink
 ```
 
 #### VLC
@@ -1074,7 +1144,7 @@ This web page can be embedded into another web page by using an iframe:
 <iframe src="http://mediamtx-ip:8889/mystream" scrolling="no"></iframe>
 ```
 
-For more advanced setups, you can create and serve a custom web page by starting from the [source code of the WebRTC read page](internal/servers/webrtc/read_index.html).
+For more advanced setups, you can create and serve a custom web page by starting from the [source code of the WebRTC read page](internal/servers/webrtc/read_index.html). In particular, there's a ready-to-use, standalone JavaScript class for reading streams with WebRTC, available in [reader.js](internal/servers/webrtc/reader.js).
 
 Web browsers can also read a stream with the [HLS protocol](#hls). Latency is higher but there are less problems related to connectivity between server and clients, furthermore the server load can be balanced by using a common HTTP CDN (like CloudFront or Cloudflare), and this allows to handle readers in the order of millions. Visit the web page:
 
@@ -1180,19 +1250,6 @@ and can also be accessed without using the browsers, by software that supports t
 http://localhost:8888/mystream/index.m3u8
 ```
 
-Although the server can produce HLS with a variety of video and audio codecs (that are listed at the beginning of the README), not all browsers can read all codecs.
-
-You can check what codecs your browser can read by [using this tool](https://jsfiddle.net/g1qyf4ea).
-
-If you want to support most browsers, you can to re-encode the stream by using the H264 and AAC codecs, for instance by using FFmpeg:
-
-```sh
-ffmpeg -i rtsp://original-source \
--c:v libx264 -pix_fmt yuv420p -preset ultrafast -b:v 600k \
--c:a aac -b:a 160k \
--f rtsp rtsp://localhost:8554/mystream
-```
-
 Known clients that can read with HLS are [FFmpeg](#ffmpeg-1), [GStreamer](#gstreamer-1), [VLC](#vlc) and [web browsers](#web-browsers-1).
 
 ##### LL-HLS
@@ -1260,7 +1317,7 @@ There are 3 ways to change the configuration:
    * available in the root folder of the Docker image (`/mediamtx.yml`); it can be overridden in this way:
 
      ```
-     docker run --rm -it --network=host -v $PWD/mediamtx.yml:/mediamtx.yml bluenviron/mediamtx
+     docker run --rm -it --network=host -v "$PWD/mediamtx.yml:/mediamtx.yml:ro" bluenviron/mediamtx
      ```
 
    The configuration can be changed dynamically when the server is running (hot reloading) by writing to the configuration file. Changes are detected and applied without disconnecting existing clients, whenever it's possible.
@@ -1274,7 +1331,7 @@ There are 3 ways to change the configuration:
    Parameters that have array as value can be overridden by setting a comma-separated list. For example:
 
    ```
-   MTX_PROTOCOLS="tcp,udp"
+   MTX_RTSPTRANSPORTS="tcp,udp"
    ```
 
    Parameters in maps can be overridden by using underscores, in the following way:
@@ -1543,7 +1600,8 @@ pathDefaults:
   record: yes
   # Path of recording segments.
   # Extension is added automatically.
-  # Available variables are %path (path name), %Y %m %d %H %M %S %f %s (time in strftime format)
+  # Available variables are %path (path name), %Y %m %d (year, month, day),
+  # %H %M %S (hours, minutes, seconds), %f (milliseconds), %s (unix epoch).
   recordPath: ./recordings/%path/%Y-%m-%d_%H-%M-%S-%f
 ```
 
@@ -1588,21 +1646,27 @@ playbackAddress: :9996
 The server provides an endpoint to list recorded timespans:
 
 ```
-http://localhost:9996/list?path=[mypath]
+http://localhost:9996/list?path=[mypath]&start=[start]&end=[end]
 ```
 
-Where [mypath] is the name of a path. The server will return a list of timespans in JSON format:
+Where:
+
+* [mypath] is the name of a path
+* [start] (optional) is the start date in [RFC3339 format](https://www.utctime.net/)
+* [end] (optional) is the end date in [RFC3339 format](https://www.utctime.net/)
+
+The server will return a list of timespans in JSON format:
 
 ```json
 [
   {
     "start": "2006-01-02T15:04:05Z07:00",
-    "duration": "60.0",
+    "duration": 60.0,
     "url": "http://localhost:9996/get?path=[mypath]&start=2006-01-02T15%3A04%3A05Z07%3A00&duration=60.0"
   },
   {
     "start": "2006-01-02T15:07:05Z07:00",
-    "duration": "32.33",
+    "duration": 32.33,
     "url": "http://localhost:9996/get?path=[mypath]&start=2006-01-02T15%3A07%3A05Z07%3A00&duration=32.33"
   }
 ]
@@ -1611,13 +1675,13 @@ Where [mypath] is the name of a path. The server will return a list of timespans
 The server provides an endpoint to download recordings:
 
 ```
-http://localhost:9996/get?path=[mypath]&start=[start_date]&duration=[duration]&format=[format]
+http://localhost:9996/get?path=[mypath]&start=[start]&duration=[duration]&format=[format]
 ```
 
 Where:
 
 * [mypath] is the path name
-* [start_date] is the start date in [RFC3339 format](https://www.utctime.net/)
+* [start] is the start date in [RFC3339 format](https://www.utctime.net/)
 * [duration] is the maximum duration of the recording in seconds
 * [format] (optional) is the output format of the stream. Available values are "fmp4" (default) and "mp4"
 
@@ -1681,6 +1745,67 @@ paths:
 ```
 
 The command inserted into `runOnDemand` will start only when a client requests the path `ondemand`, therefore the file will start streaming only when requested.
+
+### Route absolute timestamps
+
+Some streaming protocols allow to route absolute timestamps, associated with each frame, that are useful for synchronizing several video or data streams together. In particular, _MediaMTX_ supports receiving absolute timestamps with the following protocols and devices:
+
+* HLS (through the `EXT-X-PROGRAM-DATE-TIME` tag in playlists)
+* RTSP (through RTCP reports, when `useAbsoluteTimestamp` is `true` in settings)
+* WebRTC (through RTCP reports, when `useAbsoluteTimestamp` is `true` in settings)
+* Raspberry Pi Camera
+
+and supports sending absolute timestamps with the following protocols:
+
+* HLS (through the `EXT-X-PROGRAM-DATE-TIME` tag in playlists)
+* RTSP (through RTCP reports)
+* WebRTC (through RTCP reports)
+
+A library that can read absolute timestamps with HLS is [gohlslib](https://github.com/bluenviron/gohlslib).
+
+A library that can read absolute timestamps with RTSP is [gortsplib](https://github.com/bluenviron/gortsplib).
+
+A browser can read read absolute timestamps with WebRTC if it exposes the [estimatedPlayoutTimestamp](https://www.w3.org/TR/webrtc-stats/#dom-rtcinboundrtpstreamstats-estimatedplayouttimestamp) statistic.
+
+### Expose the server in a subfolder
+
+HTTP-based services (WebRTC, HLS, Control API, Playback Server, Metrics, pprof) can be exposed in a subfolder of an existing HTTP server or reverse proxy. The reverse proxy must be able to intercept HTTP requests addressed to MediaMTX and corresponding responses, and perform the following changes:
+
+* The subfolder path must be stripped from request paths. For instance, if the server is exposed behind `/subpath` and the reverse proxy receives a request with path `/subpath/mystream/index.m3u8`, this has to be changed into `/mystream/index.m3u8`.
+
+* Any `Location` header in responses must be prefixed with the subfolder path. For instance, if the server is exposed behind `/subpath` and the server sends a response with `Location: /mystream/index.m3u8`, this has to be changed into `Location: /subfolder/mystream/index.m3u8`.
+
+If _nginx_ is the reverse proxy, this can be achieved with the following configuration:
+
+```
+location /subpath/ {
+    proxy_pass http://mediamtx-ip:8889/;
+    proxy_redirect / /subpath/;
+}
+```
+
+If _Apache HTTP Server_ is the reverse proxy, this can be achieved with the following configuration:
+
+```
+<Location /subpath>
+    ProxyPass http://mediamtx-ip:8889
+    ProxyPassReverse http://mediamtx-ip:8889
+    Header edit Location ^(.*)$ "/subpath$1"
+</Location>
+```
+
+If _Caddy_ is the reverse proxy, this can be achieved with the following configuration:
+
+```
+:80 {
+    handle_path /subpath/* {
+        reverse_proxy {
+            to mediamtx-ip:8889
+            header_down Location ^/ /subpath/
+        }
+    }
+}
+```
 
 ### Start on boot
 
@@ -1797,9 +1922,9 @@ The server allows to specify commands that are executed when a certain event hap
 # Command to run when a client connects to the server.
 # This is terminated with SIGINT when a client disconnects from the server.
 # The following environment variables are available:
-# * RTSP_PORT: RTSP server port
 # * MTX_CONN_TYPE: connection type
 # * MTX_CONN_ID: connection ID
+# * RTSP_PORT: RTSP server port
 runOnConnect: curl http://my-custom-server/webhook?conn_type=$MTX_CONN_TYPE&conn_id=$MTX_CONN_ID
 # Restart the command if it exits.
 runOnConnectRestart: no
@@ -1921,10 +2046,10 @@ pathDefaults:
   # Command to run when a recording segment is created.
   # The following environment variables are available:
   # * MTX_PATH: path name
+  # * MTX_SEGMENT_PATH: segment file path
   # * RTSP_PORT: RTSP server port
   # * G1, G2, ...: regular expression groups, if path name is
   #   a regular expression.
-  # * MTX_SEGMENT_PATH: segment file path
   runOnRecordSegmentCreate: curl http://my-custom-server/webhook?path=$MTX_PATH&segment_path=$MTX_SEGMENT_PATH
 ```
 
@@ -1935,11 +2060,11 @@ pathDefaults:
   # Command to run when a recording segment is complete.
   # The following environment variables are available:
   # * MTX_PATH: path name
+  # * MTX_SEGMENT_PATH: segment file path
+  # * MTX_SEGMENT_DURATION: segment duration
   # * RTSP_PORT: RTSP server port
   # * G1, G2, ...: regular expression groups, if path name is
   #   a regular expression.
-  # * MTX_SEGMENT_PATH: segment file path
-  # * MTX_SEGMENT_DURATION: segment duration
   runOnRecordSegmentComplete: curl http://my-custom-server/webhook?path=$MTX_PATH&segment_path=$MTX_SEGMENT_PATH
 ```
 
@@ -1990,6 +2115,14 @@ rtsp_conns_bytes_sent{id="[id]"} 187
 rtsp_sessions{id="[id]",state="idle"} 1
 rtsp_sessions_bytes_received{id="[id]",state="[state]"} 1234
 rtsp_sessions_bytes_sent{id="[id]",state="[state]"} 187
+rtsp_sessions_rtp_packets_received{id="[id]"} 123
+rtsp_sessions_rtp_packets_sent{id="[id]"} 123
+rtsp_sessions_rtp_packets_lost{id="[id]"} 123
+rtsp_sessions_rtp_packets_in_error{id="[id]"} 123
+rtsp_sessions_rtp_packets_jitter{id="[id]"} 123
+rtsp_sessions_rtcp_packets_received{id="[id]"} 123
+rtsp_sessions_rtcp_packets_sent{id="[id]"} 123
+rtsp_sessions_rtcp_packets_in_error{id="[id]"} 123
 
 # metrics of every RTSPS connection
 rtsps_conns{id="[id]"} 1
@@ -2000,6 +2133,14 @@ rtsps_conns_bytes_sent{id="[id]"} 187
 rtsps_sessions{id="[id]",state="[state]"} 1
 rtsps_sessions_bytes_received{id="[id]",state="[state]"} 1234
 rtsps_sessions_bytes_sent{id="[id]",state="[state]"} 187
+rtsps_sessions_rtp_packets_received{id="[id]"} 123
+rtsps_sessions_rtp_packets_sent{id="[id]"} 123
+rtsps_sessions_rtp_packets_lost{id="[id]"} 123
+rtsps_sessions_rtp_packets_in_error{id="[id]"} 123
+rtsps_sessions_rtp_packets_jitter{id="[id]"} 123
+rtsps_sessions_rtcp_packets_received{id="[id]"} 123
+rtsps_sessions_rtcp_packets_sent{id="[id]"} 123
+rtsps_sessions_rtcp_packets_in_error{id="[id]"} 123
 
 # metrics of every RTMP connection
 rtmp_conns{id="[id]",state="[state]"} 1
@@ -2132,7 +2273,7 @@ http://localhost:8889/mystream/whip?jwt=[jwt]
 
 If the server is hosted inside a container or is behind a NAT, additional configuration is required in order to allow the two WebRTC parts (server and client) to establish a connection.
 
-Make sure that `webrtcAdditionalHosts` includes your public IPs, that are IPs that can be used by clients to reach the server. If clients are on the same LAN as the server, then insert the LAN address of the server. If clients are coming from the internet, insert the public IP address of the server, or alternatively a DNS name, if you have one. You can insert multiple values to support all scenarios:
+Make sure that `webrtcAdditionalHosts` includes your public IPs, that are IPs that can be used by clients to reach the server. If clients are on the same LAN as the server, add the LAN address of the server. If clients are coming from the internet, add the public IP address of the server, or alternatively a DNS name, if you have one. You can add multiple values to support all scenarios:
 
 ```yml
 webrtcAdditionalHosts: [192.168.x.x, 1.2.3.4, my-dns.example.org, ...]
@@ -2155,14 +2296,12 @@ webrtcLocalTCPAddress: :8189
 
 If there's a NAT / container between server and clients, it must be configured to route all incoming TCP packets on port 8189 to the server.
 
-If you still have problems, enable a STUN server:
+If you still have problems, add a STUN server. When a STUN server is in use, server IP is obtained automatically and connections are established with the "UDP hole punching" technique, that uses a random UDP port that does not need to be open. For instance:
 
 ```yml
 webrtcICEServers2:
   - url: stun:stun.l.google.com:19302
 ```
-
-When a STUN server is in use, connections can be established with the "UDP hole punching" method, that uses a random UDP port that does not need to be open.
 
 If you really still have problems, you can force all WebRTC/ICE connections to pass through a TURN server, like [coturn](https://github.com/coturn/coturn), that must be configured externally. The server address and credentials must be set in the configuration file:
 
@@ -2196,6 +2335,49 @@ webrtcICEServers2:
   clientOnly: true
 ```
 
+#### Supported browsers
+
+The server can ingest and broadcast with WebRTC a wide variety of video and audio codecs (that are listed at the beginning of the README), but not all browsers can publish and read all codecs due to internal limitations that cannot be overcome by this or any other server.
+
+In particular, reading and publishing H265 tracks with WebRTC was not possible until some time ago due to lack of browser support. The situation improved recently and can be described as following:
+
+* Safari on iOS and macOS fully supports publishing and reading H265 tracks
+* Chrome on Windows supports publishing and reading H265 tracks when a GPU is present and when the browser is launched with the following flags:
+
+  ```
+  chrome.exe --enable-features=PlatformHEVCEncoderSupport,WebRtcAllowH265Receive,WebRtcAllowH265Send --force-fieldtrials=WebRTC-Video-H26xPacketBuffer/Enabled
+  ```
+
+  We are expecting these flags to become redundant in the future and the feature to be turned on by default.
+
+You can check what codecs your browser can publish or read with WebRTC by [using this tool](https://jsfiddle.net/v24s8q1f/).
+
+If you want to support most browsers, you can to re-encode the stream by using H264 and Opus codecs, for instance by using FFmpeg:
+
+```sh
+ffmpeg -i rtsp://original-source \
+-c:v libx264 -pix_fmt yuv420p -preset ultrafast -b:v 600k \
+-c:a libopus -b:a 64K -async 50 \
+-f rtsp rtsp://localhost:8554/mystream
+```
+
+### HLS-specific features
+
+#### Supported browsers
+
+The server can produce HLS streams with a variety of video and audio codecs (that are listed at the beginning of the README), but not all browsers can read all codecs due to internal limitations that cannot be overcome by this or any other server.
+
+You can check what codecs your browser can read with HLS by [using this tool](https://jsfiddle.net/tjcyv5aw/).
+
+If you want to support most browsers, you can to re-encode the stream by using H264 and AAC codecs, for instance by using FFmpeg:
+
+```sh
+ffmpeg -i rtsp://original-source \
+-c:v libx264 -pix_fmt yuv420p -preset ultrafast -b:v 600k \
+-c:a aac -b:a 160k \
+-f rtsp rtsp://localhost:8554/mystream
+```
+
 ### RTSP-specific features
 
 #### Transport protocols
@@ -2217,13 +2399,13 @@ openssl genrsa -out server.key 2048
 openssl req -new -x509 -sha256 -key server.key -out server.crt -days 3650
 ```
 
-Edit `mediamtx.yml`, and set the `protocols`, `encryption`, `serverKey` and serverCert parameters:
+Edit `mediamtx.yml` and set the `rtspTransports`, `encryption`, `serverKey` and serverCert parameters:
 
 ```yml
-protocols: [tcp]
-encryption: optional
-serverKey: server.key
-serverCert: server.crt
+rtspTransports: [tcp]
+rtspEncryption: optional
+rtspServerKey: server.key
+rtspServerCert: server.crt
 ```
 
 Streams can be published and read with the `rtsps` scheme and the `8322` port:
@@ -2245,7 +2427,7 @@ In some scenarios, when publishing or reading from the server with RTSP, frames 
 * The stream throughput is too big and the stream can't be transmitted correctly with the UDP transport protocol. UDP is more performant, faster and more efficient than TCP, but doesn't have a retransmission mechanism, that is needed in case of streams that need a large bandwidth. A solution consists in switching to TCP:
 
   ```yml
-  protocols: [tcp]
+  rtspTransports: [tcp]
   ```
 
   In case the source is a camera:
@@ -2270,7 +2452,7 @@ openssl genrsa -out server.key 2048
 openssl req -new -x509 -sha256 -key server.key -out server.crt -days 3650
 ```
 
-Edit mediamtx.yml, and set the `rtmpEncryption`, `rtmpServerKey` and `rtmpServerCert` parameters:
+Edit mediamtx.yml and set the `rtmpEncryption`, `rtmpServerKey` and `rtmpServerCert` parameters:
 
 ```yml
 rtmpEncryption: optional
@@ -2290,7 +2472,7 @@ Be aware that RTMPS is currently unsupported by all major players. However, you 
 
 ### Standard
 
-Install git and Go &ge; 1.22. Clone the repository, enter into the folder and start the building process:
+Install git and Go &ge; 1.23. Clone the repository, enter into the folder and start the building process:
 
 ```sh
 git clone https://github.com/bluenviron/mediamtx
@@ -2331,7 +2513,7 @@ If you need to use a custom or external libcamera when interacting with the Rasp
 
 Cross compilation allows to build an executable for a target machine from another machine with different operating system or architecture. This is useful in case the target machine doesn't have enough resources for compilation or if you don't want to install the compilation dependencies on it.
 
-On the machine you want to use to compile, install git and Go &ge; 1.22. Clone the repository, enter into the folder and start the building process:
+On the machine you want to use to compile, install git and Go &ge; 1.23. Clone the repository, enter into the folder and start the building process:
 
 ```sh
 git clone https://github.com/bluenviron/mediamtx
@@ -2378,10 +2560,11 @@ The command will produce tarballs in folder `binaries/`.
 
 ## License
 
-All the code in this repository is released under the [MIT License](LICENSE). Compiled binaries make use of some third-party dependencies:
+All the code in this repository is released under the [MIT License](LICENSE). Compiled binaries include some third-party dependencies:
 
-* hls.js, released under the [Apache License 2.0](https://github.com/video-dev/hls.js/blob/master/LICENSE)
-* all the dependencies listed into the [go.mod file](go.mod), which are all released under either the MIT license, BSD-3-Clause license or Apache License 2.0
+* all the Golang-based dependencies listed into the [go.mod file](go.mod), which are all released under either the MIT license, BSD 3-Clause license or Apache License 2.0.
+* hls.js, released under the [Apache License 2.0](https://github.com/video-dev/hls.js/blob/master/LICENSE).
+* mediamtx-rpicamera, which is released under the same license of _MediaMTX_ but includes some [third-party dependencies](https://github.com/bluenviron/mediamtx-rpicamera?tab=readme-ov-file#license).
 
 ## Specifications
 
@@ -2389,10 +2572,16 @@ All the code in this repository is released under the [MIT License](LICENSE). Co
 |----|----|
 |[RTSP / RTP / RTCP specifications](https://github.com/bluenviron/gortsplib#specifications)|RTSP|
 |[HLS specifications](https://github.com/bluenviron/gohlslib#specifications)|HLS|
-|[RTMP](https://rtmp.veriskope.com/pdf/rtmp_specification_1.0.pdf)|RTMP|
-|[Enhanced RTMP v1](https://veovera.org/docs/enhanced/enhanced-rtmp-v1.pdf)|RTMP|
-|[Action Message Format](https://rtmp.veriskope.com/pdf/amf0-file-format-specification.pdf)|RTMP|
+|[Action Message Format - AMF 0](https://veovera.org/docs/legacy/amf0-file-format-spec.pdf)|RTMP|
+|[FLV](https://veovera.org/docs/legacy/video-file-format-v10-1-spec.pdf)|RTMP|
+|[RTMP](https://veovera.org/docs/legacy/rtmp-v1-0-spec.pdf)|RTMP|
+|[Enhanced RTMP v2](https://veovera.org/docs/enhanced/enhanced-rtmp-v2.pdf)|RTMP|
 |[WebRTC: Real-Time Communication in Browsers](https://www.w3.org/TR/webrtc/)|WebRTC|
+|[RFC8835, Transports for WebRTC](https://datatracker.ietf.org/doc/html/rfc8835)|WebRTC|
+|[RFC7742, WebRTC Video Processing and Codec Requirements](https://datatracker.ietf.org/doc/html/rfc7742)|WebRTC|
+|[RFC7847, WebRTC Audio Codec and Processing Requirements](https://datatracker.ietf.org/doc/html/rfc7874)|WebRTC|
+|[RFC7875, Additional WebRTC Audio Codecs for Interoperability](https://datatracker.ietf.org/doc/html/rfc7875)|WebRTC|
+|[H.265 Profile for WebRTC](https://datatracker.ietf.org/doc/draft-ietf-avtcore-hevc-webrtc/)|WebRTC|
 |[WebRTC HTTP Ingestion Protocol (WHIP)](https://datatracker.ietf.org/doc/draft-ietf-wish-whip/)|WebRTC|
 |[WebRTC HTTP Egress Protocol (WHEP)](https://datatracker.ietf.org/doc/draft-murillo-whep/)|WebRTC|
 |[The SRT Protocol](https://haivision.github.io/srt-rfc/draft-sharabayko-srt.html)|SRT|

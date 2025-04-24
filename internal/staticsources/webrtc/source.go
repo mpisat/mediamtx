@@ -20,7 +20,7 @@ import (
 
 // Source is a WebRTC static source.
 type Source struct {
-	ReadTimeout conf.StringDuration
+	ReadTimeout conf.Duration
 	Parent      defs.StaticSourceParent
 }
 
@@ -50,11 +50,12 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
 			Timeout:   time.Duration(s.ReadTimeout),
 			Transport: tr,
 		},
-		URL: u,
-		Log: s,
+		UseAbsoluteTimestamp: params.Conf.UseAbsoluteTimestamp,
+		URL:                  u,
+		Log:                  s,
 	}
 
-	_, err = client.Read(params.Context)
+	err = client.Initialize(params.Context)
 	if err != nil {
 		return err
 	}
@@ -75,9 +76,9 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
 		return rres.Err
 	}
 
-	stream = rres.Stream
-
 	defer s.Parent.SetNotReady(defs.PathSourceStaticSetNotReadyReq{})
+
+	stream = rres.Stream
 
 	client.StartReading()
 
@@ -87,7 +88,7 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
 // APISourceDescribe implements StaticSource.
 func (*Source) APISourceDescribe() defs.APIPathSourceOrReader {
 	return defs.APIPathSourceOrReader{
-		Type: "webrtcSource",
+		Type: "webRTCSource",
 		ID:   "",
 	}
 }
